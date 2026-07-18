@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/drzamarian/n8n-mcp-community/security/advisories/new
+    about: Report security vulnerabilities privately. Do not open a public issue.
+  - name: Support and troubleshooting
+    url: https://github.com/drzamarian/n8n-mcp-community/blob/main/SUPPORT.md
+    about: Review supported help channels and the troubleshooting information to include.

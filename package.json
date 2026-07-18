@@ -1,0 +1,126 @@
+{
+  "name": "n8n-mcp-community",
+  "version": "0.1.0",
+  "description": "A security-focused MCP server for self-hosted n8n Community Edition.",
+  "private": true,
+  "license": "MIT",
+  "author": {
+    "name": "Dr. Walter Zamarian Jr.",
+    "url": "https://www.walterzamarianjr.com/"
+  },
+  "homepage": "https://github.com/drzamarian/n8n-mcp-community#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/drzamarian/n8n-mcp-community.git"
+  },
+  "bugs": {
+    "url": "https://github.com/drzamarian/n8n-mcp-community/issues"
+  },
+  "mcpName": "io.github.drzamarian/n8n-mcp-community",
+  "packageManager": "npm@12.0.1",
+  "keywords": [
+    "n8n",
+    "mcp",
+    "model-context-protocol",
+    "automation",
+    "community-edition",
+    "self-hosted"
+  ],
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "n8n-mcp-community": "dist/index.js"
+  },
+  "files": [
+    "dist/**/*.js",
+    "docs/README.md",
+    "docs/architecture.md",
+    "docs/clients.md",
+    "docs/compatibility.md",
+    "docs/configuration.md",
+    "docs/assets/demo.gif",
+    "docs/demo-transcript.md",
+    "docs/examples.md",
+    "docs/faq.md",
+    "docs/getting-started.md",
+    "docs/installation.md",
+    "docs/provenance.md",
+    "docs/security-model.md",
+    "docs/tools.md",
+    "docs/troubleshooting.md",
+    "CHANGELOG.md",
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "README.md",
+    "ROADMAP.md",
+    "SUPPORT.md",
+    "SECURITY.md",
+    "server.json",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "overrides": {
+    "tmp": "0.2.7"
+  },
+  "allowScripts": {},
+  "scripts": {
+    "audit:full": "node scripts/run-npm-audit.mjs full",
+    "audit:production": "node scripts/run-npm-audit.mjs production",
+    "artifacts:baseline": "node scripts/update-artifact-baseline.mjs",
+    "artifacts:approve": "node scripts/approve-artifact-baseline.mjs",
+    "build": "node scripts/clean.mjs runtime && tsc --pretty false",
+    "build:mcpb": "npm run build && node scripts/build-mcpb.mjs",
+    "clean": "node scripts/clean.mjs",
+    "check:distribution": "npm run check:package && npm run check:mcpb",
+    "check:docs": "npm run build && node scripts/verify-documentation.mjs",
+    "check:artifact-review": "node scripts/verify-artifact-baseline-review.mjs",
+    "check:inventory": "node scripts/verify-inventory.mjs",
+    "check:language": "node scripts/verify-public-language.mjs",
+    "check:mcpb": "npm run build:mcpb && node scripts/verify-mcpb.mjs",
+    "check:metadata": "node scripts/verify-metadata.mjs",
+    "check:public-boundary": "node scripts/verify-public-boundary.mjs",
+    "check:package": "npm run build && node scripts/verify-package.mjs",
+    "check:registry": "node scripts/verify-registry-schema.mjs",
+    "check:readme-count": "node scripts/verify-readme-test-count.mjs",
+    "check:release": "node scripts/verify-release-policy.mjs",
+    "docs:check": "npm run build && node scripts/verify-documentation.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "inventory:check": "node scripts/verify-inventory.mjs",
+    "licenses:check": "node scripts/verify-dependency-licenses.mjs",
+    "lint": "eslint . --max-warnings=0",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run verify",
+    "sbom": "npm sbom --package-lock-only --omit=dev --sbom-format cyclonedx --sbom-type application",
+    "sbom:full": "npm sbom --package-lock-only --sbom-format cyclonedx --sbom-type application",
+    "test:contract": "npm run build && npm run test:compile && node --test --test-concurrency=1 .test-dist/test/mcp-contract.test.js .test-dist/test/n8n-client.test.js .test-dist/test/tool-contract.test.js",
+    "test:coverage": "npm run build && npm run test:compile && node --test --test-concurrency=1 --experimental-test-coverage --test-coverage-include='.test-dist/src/**/*.js' --test-coverage-exclude='.test-dist/src/index.js' --test-coverage-lines=90 --test-coverage-functions=90 --test-coverage-branches=85 .test-dist/test/**/*.test.js",
+    "test:compile": "node scripts/clean.mjs test && tsc -p tsconfig.test.json --pretty false",
+    "test:examples": "npm run build && node scripts/verify-examples.mjs",
+    "test": "npm run build && npm run test:compile && node --test --test-concurrency=1 .test-dist/test/**/*.test.js",
+    "typecheck": "tsc --noEmit --pretty false",
+    "check": "npm run format:check && npm run licenses:check && npm run lint && npm run typecheck && npm test && npm run check:readme-count && npm run check:metadata && npm run check:release && npm run check:docs && npm run check:language && npm run test:examples && npm run check:inventory && npm run check:public-boundary && npm run check:artifact-review",
+    "verify": "npm run check && npm run test:coverage && npm run check:distribution && npm run check:registry"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@anthropic-ai/mcpb": "2.1.2",
+    "@eslint/js": "10.0.1",
+    "@types/node": "22.20.1",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "eslint": "10.7.0",
+    "fflate": "0.8.3",
+    "globals": "17.7.0",
+    "prettier": "3.9.5",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.64.0",
+    "yaml": "2.9.0"
+  }
+}

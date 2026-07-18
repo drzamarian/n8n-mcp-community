@@ -1,0 +1,41 @@
+name: Feature request
+description: Propose a bounded Community Edition capability or usability improvement.
+title: "[Feature]: "
+labels: [enhancement, needs-triage]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the user outcome that is currently difficult or impossible.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed capability
+      description: Prefer the smallest complete behavior and identify any n8n Public API endpoint.
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Security and data considerations
+      description: Explain writes, external calls, credentials, returned data, and safe defaults.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This proposal is intended for self-hosted n8n Community Edition.
+          required: true
+        - label: I did not include secrets, private hosts, or production data.
+          required: true

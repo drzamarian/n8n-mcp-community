@@ -1,0 +1,247 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing annotated release tag, for example v0.1.0
+        required: true
+        type: string
+      publish:
+        description: Publish npm, Registry metadata, and a signed GitHub release
+        required: true
+        default: false
+        type: boolean
+      confirmation:
+        description: Enter PUBLISH followed by the tag when publish is enabled
+        required: false
+        type: string
+      signed_mcpb_sha256:
+        description: Walter-approved SHA-256 of the externally signed MCPB draft asset
+        required: false
+        type: string
+      npm_tarball_sha256:
+        description: Walter-approved SHA-256 of the reviewed npm tarball
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  validate-dispatch:
+    name: Validate release dispatch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the selected tag
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+      - name: Fail unless the dispatch ref and annotated tag agree
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF}" = "refs/tags/${RELEASE_TAG}"
+          test "$(git cat-file -t "${RELEASE_TAG}")" = "tag"
+          version="$(node -p 'require("./package.json").version')"
+          test "${RELEASE_TAG}" = "v${version}"
+          test "$(git rev-list -n 1 "${RELEASE_TAG}")" = "${GITHUB_SHA}"
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          git merge-base --is-ancestor "${GITHUB_SHA}" refs/remotes/origin/main
+
+  build-candidate:
+    name: Build release candidate
+    needs: validate-dispatch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the exact dispatched commit
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24.18.0
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - name: Activate the audited npm client
+        run: |
+          npm install --global npm@12.0.1 --ignore-scripts
+          test "$(npm --version)" = "12.0.1"
+      - name: Install exact dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+      - name: Run the complete release gate
+        run: npm run verify
+      - name: Build the npm, MCPB, Registry, SBOM, and checksum set
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir release-artifacts
+          npm pack --json --ignore-scripts --pack-destination release-artifacts > /dev/null
+          mapfile -t bundles < <(find dist -maxdepth 1 -type f -name '*.mcpb' -print)
+          test "${#bundles[@]}" -eq 1
+          cp "${bundles[0]}" release-artifacts/
+          cp server.json release-artifacts/server.json
+          npm run sbom > release-artifacts/sbom.cdx.json
+          (
+            cd release-artifacts
+            sha256sum ./*.tgz ./*.mcpb ./server.json ./sbom.cdx.json \
+              > SHA256SUMS.unsigned
+          )
+      - name: Retain the unsigned candidate for review
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-candidate-${{ inputs.tag }}
+          path: release-artifacts/
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-release:
+    name: Verify the signed handoff and publish the approved release
+    if: inputs.publish
+    needs: build-candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Check out the exact dispatched commit
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Set up Node.js for trusted publishing
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24.18.0
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - name: Activate the audited npm client
+        run: |
+          npm install --global npm@12.0.1 --ignore-scripts
+          test "$(npm --version)" = "12.0.1"
+      - name: Install exact release tooling without lifecycle scripts
+        run: npm ci --ignore-scripts
+      - name: Download the reviewed candidate
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: release-candidate-${{ inputs.tag }}
+          path: release-artifacts
+      - name: Enforce publication approval and unsigned artifact integrity
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_CONFIRMATION: ${{ inputs.confirmation }}
+          SIGNED_MCPB_SHA256: ${{ inputs.signed_mcpb_sha256 }}
+          APPROVED_NPM_TARBALL_SHA256: ${{ inputs.npm_tarball_sha256 }}
+        run: |
+          set -euo pipefail
+          test "${RELEASE_CONFIRMATION}" = "PUBLISH ${RELEASE_TAG}"
+          [[ "${SIGNED_MCPB_SHA256}" =~ ^[0-9a-f]{64}$ ]]
+          [[ "${APPROVED_NPM_TARBALL_SHA256}" =~ ^[0-9a-f]{64}$ ]]
+          test "$(git cat-file -t "${RELEASE_TAG}")" = "tag"
+          test "$(git rev-list -n 1 "${RELEASE_TAG}")" = "${GITHUB_SHA}"
+          test "$(node -p 'require("./package.json").private === true ? "private" : "public"')" = "public"
+          test "$(node -p 'require("./release/mcpb-signing-policy.json").status')" = "active"
+          (
+            cd release-artifacts
+            sha256sum --check SHA256SUMS.unsigned
+          )
+          mapfile -t packages < <(find release-artifacts -maxdepth 1 -type f -name '*.tgz' -print)
+          test "${#packages[@]}" -eq 1
+          test "$(sha256sum "${packages[0]}" | cut -d ' ' -f 1)" = "${APPROVED_NPM_TARBALL_SHA256}"
+      - name: Download Walter's externally signed MCPB from the draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          release_state="$(gh release view "${RELEASE_TAG}" --json isDraft,tagName)"
+          test "$(jq -r '.tagName' <<<"${release_state}")" = "${RELEASE_TAG}"
+          test "$(jq -r '.isDraft' <<<"${release_state}")" = "true"
+          version="$(node -p 'require("./package.json").version')"
+          asset="n8n-mcp-community-${version}.mcpb"
+          mkdir signed-handoff
+          gh release download "${RELEASE_TAG}" --pattern "${asset}" --dir signed-handoff
+          test -f "signed-handoff/${asset}"
+      - name: Verify the signed handoff, identity, and byte-for-byte runtime parity
+        shell: bash
+        env:
+          SIGNED_MCPB_SHA256: ${{ inputs.signed_mcpb_sha256 }}
+        run: |
+          set -euo pipefail
+          mapfile -t unsigned_bundles < <(find release-artifacts -maxdepth 1 -type f -name '*.mcpb' -print)
+          mapfile -t signed_bundles < <(find signed-handoff -maxdepth 1 -type f -name '*.mcpb' -print)
+          test "${#unsigned_bundles[@]}" -eq 1
+          test "${#signed_bundles[@]}" -eq 1
+          node scripts/verify-signed-mcpb.mjs \
+            "${unsigned_bundles[0]}" \
+            "${signed_bundles[0]}" \
+            "${SIGNED_MCPB_SHA256}" \
+            release/mcpb-signing-policy.json
+          cp "${signed_bundles[0]}" "${unsigned_bundles[0]}"
+          (
+            cd release-artifacts
+            sha256sum ./*.tgz ./*.mcpb ./server.json ./sbom.cdx.json > SHA256SUMS
+          )
+      - name: Publish the reviewed npm tarball through trusted publishing
+        shell: bash
+        env:
+          APPROVED_NPM_TARBALL_SHA256: ${{ inputs.npm_tarball_sha256 }}
+        run: |
+          set -euo pipefail
+          mapfile -t packages < <(find release-artifacts -maxdepth 1 -type f -name '*.tgz' -print)
+          test "${#packages[@]}" -eq 1
+          test "$(sha256sum "${packages[0]}" | cut -d ' ' -f 1)" = "${APPROVED_NPM_TARBALL_SHA256}"
+          npm publish "${packages[0]}" --access public --provenance --ignore-scripts
+      - name: Install the pinned MCP Registry publisher
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error --max-time 60 \
+            --output mcp-publisher.tar.gz \
+            https://github.com/modelcontextprotocol/registry/releases/download/v1.7.9/mcp-publisher_linux_amd64.tar.gz
+          echo 'ab128162b0616090b47cf245afe0a23f3ef08936fdce19074f5ba0a4469281ac  mcp-publisher.tar.gz' \
+            | sha256sum --check -
+          tar -xzf mcp-publisher.tar.gz mcp-publisher
+          chmod 0755 mcp-publisher
+          ./mcp-publisher --version | grep -F 'mcp-publisher 1.7.9'
+      - name: Publish validated metadata to the MCP Registry
+        run: |
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish server.json
+      - name: Complete the existing draft GitHub release for the exact tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release upload "${RELEASE_TAG}" \
+            release-artifacts/*.tgz \
+            release-artifacts/*.mcpb \
+            release-artifacts/server.json \
+            release-artifacts/sbom.cdx.json \
+            release-artifacts/SHA256SUMS \
+            --clobber
+          gh release edit "${RELEASE_TAG}" \
+            --draft=false \
+            --title "${RELEASE_TAG}" \
+            --verify-tag

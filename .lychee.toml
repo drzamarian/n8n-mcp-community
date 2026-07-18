@@ -1,0 +1,8 @@
+no_progress = true
+max_retries = 2
+timeout = 20
+accept = [200, 204, 206, 429]
+exclude = [
+  "^https://n8n\\.example\\.(?:com|test)(?:/|$)",
+  "^https://example\\.(?:com|test)(?:/|$)",
+]

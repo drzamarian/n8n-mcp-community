@@ -1,0 +1,51 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.drzamarian/n8n-mcp-community",
+  "title": "n8n MCP Community",
+  "description": "A security-focused MCP server for self-hosted n8n Community Edition.",
+  "websiteUrl": "https://www.walterzamarianjr.com/",
+  "repository": {
+    "url": "https://github.com/drzamarian/n8n-mcp-community",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "n8n-mcp-community",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "N8N_API_URL",
+          "description": "Absolute HTTPS base URL for the intended self-hosted n8n instance.",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "N8N_API_KEY",
+          "description": "Dedicated least-privilege n8n Public API key.",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "N8N_MCP_MODE",
+          "description": "Operation mode: read-only, write, or unsafe.",
+          "default": "read-only",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "N8N_ALLOW_INSECURE_HTTP",
+          "description": "Keep 0 unless plaintext HTTP to a non-loopback host is explicitly accepted.",
+          "default": "0",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}

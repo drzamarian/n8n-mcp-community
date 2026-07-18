@@ -1,0 +1,10 @@
+dist/
+.test-dist/
+node_modules/
+coverage/
+sdds/
+.audit/
+*.mcpb
+*.tgz
+.github/CODEOWNERS
+.lychee.toml

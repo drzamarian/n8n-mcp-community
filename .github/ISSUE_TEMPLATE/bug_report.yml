@@ -1,0 +1,63 @@
+name: Bug report
+description: Report a reproducible defect without secrets or production data.
+title: "[Bug]: "
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Remove API keys, workflow data, credentials, personal information, and
+        private hostnames before submitting. Use Security Advisories for vulnerabilities.
+  - type: input
+    id: version
+    attributes:
+      label: Package version
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: n8n-version
+    attributes:
+      label: n8n Community Edition version
+      placeholder: 2.30.7
+    validations:
+      required: true
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation method
+      options:
+        - Source checkout
+        - Exact-version npx
+        - MCPB
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Observed behavior
+      description: Include sanitized error codes and output, never secrets or workflow payloads.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Use synthetic identifiers and data.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed secrets, personal data, private hosts, and production workflow content.
+          required: true
+        - label: I confirmed this is not a security vulnerability.
+          required: true

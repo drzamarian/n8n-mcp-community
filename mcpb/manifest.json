@@ -1,0 +1,66 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/mcpb/main/schemas/mcpb-manifest-v0.4.schema.json",
+  "manifest_version": "0.4",
+  "name": "n8n-mcp-community",
+  "display_name": "n8n MCP Community",
+  "version": "0.1.0",
+  "description": "A security-focused MCP server for self-hosted n8n Community Edition.",
+  "long_description": "Connect a local MCP client to a self-hosted n8n Community Edition instance through 44 bounded tools. The server defaults to read-only, uses the n8n Public API, and performs deterministic Introspect diagnostics without external AI.",
+  "author": {
+    "name": "Dr. Walter Zamarian Jr.",
+    "url": "https://www.walterzamarianjr.com/"
+  },
+  "homepage": "https://www.walterzamarianjr.com/",
+  "license": "MIT",
+  "keywords": ["n8n", "mcp", "automation", "community-edition", "self-hosted"],
+  "server": {
+    "type": "node",
+    "entry_point": "server/dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/dist/index.js"],
+      "env": {
+        "N8N_API_URL": "${user_config.n8nApiUrl}",
+        "N8N_API_KEY": "${user_config.n8nApiKey}",
+        "N8N_MCP_MODE": "${user_config.mode}",
+        "N8N_ALLOW_INSECURE_HTTP": "${user_config.allowInsecureHttp}"
+      }
+    }
+  },
+  "user_config": {
+    "n8nApiUrl": {
+      "type": "string",
+      "title": "n8n API URL",
+      "description": "Absolute HTTPS base URL for the intended self-hosted n8n instance.",
+      "required": true,
+      "sensitive": true
+    },
+    "n8nApiKey": {
+      "type": "string",
+      "title": "n8n API key",
+      "description": "Dedicated least-privilege n8n Public API key.",
+      "required": true,
+      "sensitive": true
+    },
+    "mode": {
+      "type": "string",
+      "title": "Operation mode",
+      "description": "Use read-only by default. Accepted values: read-only, write, unsafe.",
+      "default": "read-only",
+      "required": true
+    },
+    "allowInsecureHttp": {
+      "type": "string",
+      "title": "Allow insecure HTTP",
+      "description": "Keep 0 unless plaintext HTTP to a non-loopback host is explicitly accepted. Accepted values: 0 or 1.",
+      "default": "0",
+      "required": true
+    }
+  },
+  "compatibility": {
+    "platforms": ["linux", "darwin", "win32"],
+    "runtimes": {
+      "node": ">=22"
+    }
+  }
+}
