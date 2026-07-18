@@ -47,6 +47,10 @@
 **/signed-handoff/
 **/sbom.cdx.json
 *.key
+*.p8
+*.ppk
+*.asc
+*.gpg
 *.pem
 !/release/mcpb-trust-anchor.pem
 !/release/mcpb-intermediate-1.pem
