@@ -60,7 +60,7 @@ export function isForbiddenPublicPath(file, allowedCertificates = new Set()) {
     /(^|\/)\.(?:netrc|npmrc|pypirc)$/i.test(candidate) ||
     /(^|\/)sbom\.cdx\.json$/i.test(candidate) ||
     /(?:^|\/)(?:id_dsa|id_ecdsa|id_ed25519|id_rsa)[^/]*$/i.test(candidate) ||
-    /\.(?:jks|key|keystore|p12|pem|pfx)$/i.test(candidate) ||
+    /\.(?:asc|gpg|jks|key|keystore|p12|p8|pem|pfx|ppk)$/i.test(candidate) ||
     /\.(?:mcpb|tgz)$/i.test(candidate)
   );
 }

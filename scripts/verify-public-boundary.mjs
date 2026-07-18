@@ -239,6 +239,10 @@ const ignoredSamples = [
   "package.tgz",
   "package.mcpb",
   "maintainer.key",
+  "maintainer.p8",
+  "maintainer.ppk",
+  "maintainer.asc",
+  "maintainer.gpg",
   "nested/AGENTS.md",
   "nested/MEMORY.md",
   "nested/.agents/state.json",
@@ -318,7 +322,11 @@ if (
     syntheticAllowed,
   ) ||
   !isForbiddenPublicPath("release/rogue.pem", syntheticAllowed) ||
-  !isForbiddenPublicPath("release/private.key", syntheticAllowed)
+  !isForbiddenPublicPath("release/private.key", syntheticAllowed) ||
+  !isForbiddenPublicPath("release/private.p8", syntheticAllowed) ||
+  !isForbiddenPublicPath("release/private.ppk", syntheticAllowed) ||
+  !isForbiddenPublicPath("release/private.asc", syntheticAllowed) ||
+  !isForbiddenPublicPath("release/private.gpg", syntheticAllowed)
 ) {
   throw new Error("Public-boundary policy self-test failed.");
 }
