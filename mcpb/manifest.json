@@ -47,14 +47,16 @@
       "title": "Operation mode",
       "description": "Use read-only by default. Accepted values: read-only, write, unsafe.",
       "default": "read-only",
-      "required": true
+      "required": true,
+      "sensitive": true
     },
     "allowInsecureHttp": {
       "type": "string",
       "title": "Allow insecure HTTP",
       "description": "Keep 0 unless plaintext HTTP to a non-loopback host is explicitly accepted. Accepted values: 0 or 1.",
       "default": "0",
-      "required": true
+      "required": true,
+      "sensitive": true
     }
   },
   "compatibility": {
