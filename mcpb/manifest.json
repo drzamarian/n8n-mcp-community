@@ -48,7 +48,7 @@
       "description": "Use read-only by default. Accepted values: read-only, write, unsafe.",
       "default": "read-only",
       "required": true,
-      "sensitive": true
+      "sensitive": false
     },
     "allowInsecureHttp": {
       "type": "string",
@@ -56,7 +56,7 @@
       "description": "Keep 0 unless plaintext HTTP to a non-loopback host is explicitly accepted. Accepted values: 0 or 1.",
       "default": "0",
       "required": true,
-      "sensitive": true
+      "sensitive": false
     }
   },
   "compatibility": {
