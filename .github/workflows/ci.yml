@@ -126,7 +126,7 @@ jobs:
       - name: Run Gitleaks
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
 
   static-security:
     name: Semgrep and Trivy
@@ -192,4 +192,4 @@ jobs:
             THIRD_PARTY_NOTICES.md docs/**/*.md
           fail: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
