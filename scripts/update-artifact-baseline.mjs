@@ -73,6 +73,7 @@ try {
     mcpb: {
       sha256: await digest(mcpbFile),
       totalFileCount: mcpbFiles.length,
+      dependencyFileCount: mcpbFiles.length - projectFiles.length,
       runtimeFiles,
       projectFiles,
     },
@@ -85,6 +86,7 @@ try {
     JSON.stringify({
       npmFiles: npmFiles.length,
       mcpbFiles: mcpbFiles.length,
+      dependencyFiles: mcpbFiles.length - projectFiles.length,
       runtimeFiles: runtimeFiles.length,
       projectFiles: projectFiles.length,
       status: "updated",

@@ -69,6 +69,7 @@
   "mcpb": {
     "sha256": "993a88de14b9155771e0580ad6f2b324aef37587b32394a83a9a45580d4bfc42",
     "totalFileCount": 2182,
+    "dependencyFileCount": 2145,
     "runtimeFiles": [
       "config.js",
       "content/node-docs.js",
