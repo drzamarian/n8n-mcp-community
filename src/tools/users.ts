@@ -1,7 +1,14 @@
 import { z } from "zod";
 import { defineTool, type ToolDefinition } from "./definition.js";
 import { booleanQuery, numberQuery } from "./common.js";
-import { confirmation, cursor, identifier, pageLimit, pathSegment } from "./schemas.js";
+import {
+  confirmation,
+  cursor,
+  encodePathSegment,
+  identifier,
+  pageLimit,
+  pathSegment,
+} from "./schemas.js";
 
 const email = z.string().email().max(254);
 const userLookup = z.union([identifier, email]);
@@ -24,7 +31,7 @@ const userListSchema = z.object({
 function encodedLookup(value: string): string {
   return identifier.safeParse(value).success
     ? pathSegment(value)
-    : encodeURIComponent(email.parse(value));
+    : encodePathSegment(email.parse(value));
 }
 
 export const userTools: readonly ToolDefinition[] = Object.freeze([

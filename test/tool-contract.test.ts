@@ -1774,6 +1774,56 @@ test("historical workflow reads reject mismatched response identity", async () =
   }
 });
 
+test("user email lookups encode every valid selector as one safe path segment", async () => {
+  for (const [email, expectedPath] of [
+    ["o'brien@example.com", "/api/v1/users/o%27brien%40example.com"],
+    ["a+b@example.com", "/api/v1/users/a%2Bb%40example.com"],
+  ] as const) {
+    let observedPath = "";
+    await withConnectedClient(
+      async (input, init) => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        observedPath = new URL(request.url).pathname;
+        return json({ id: "user_1", email });
+      },
+      async (client) => {
+        const result = await client.callTool({
+          name: "n8n_users_get",
+          arguments: { userIdOrEmail: email },
+        });
+        assert.equal(result.isError, undefined);
+      },
+    );
+    assert.equal(observedPath, expectedPath);
+  }
+});
+
+test("workflow diffs reject mismatched retained snapshot version identity", async () => {
+  for (const mismatchedSelector of ["v1", "v2"] as const) {
+    let requests = 0;
+    await withConnectedClient(
+      async (input, init) => {
+        requests += 1;
+        const request = input instanceof Request ? input : new Request(input, init);
+        const requestedVersion = new URL(request.url).pathname.endsWith("/v1") ? "v1" : "v2";
+        return json({
+          ...historicalWorkflow,
+          versionId: requestedVersion === mismatchedSelector ? "v_other" : requestedVersion,
+        });
+      },
+      async (client) => {
+        const result = await client.callTool({
+          name: "n8n_workflows_diff",
+          arguments: { workflowId: "wf_1", fromVersionId: "v1", toVersionId: "v2" },
+        });
+        assert.equal(result.isError, true);
+        assert.match(JSON.stringify(result), /different workflow version identity/i);
+      },
+    );
+    assert.equal(requests, mismatchedSelector === "v1" ? 1 : 2);
+  }
+});
+
 test("workflow update preserves same-version state from its immediate pre-write read", async () => {
   const requests: CapturedRequest[] = [];
   const latestPinData = { Webhook: [{ json: { runtimeState: "latest" } }] };

@@ -186,6 +186,13 @@ export function setUnknownPath(
   writeChild(current, last, value);
 }
 
+export function encodePathSegment(value: string): string {
+  return encodeURIComponent(value).replace(
+    /[!'()*]/g,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+}
+
 export function pathSegment(value: string): string {
-  return encodeURIComponent(identifier.parse(value));
+  return encodePathSegment(identifier.parse(value));
 }

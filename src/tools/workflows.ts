@@ -407,6 +407,16 @@ function historicalWorkflowForOutput(workflow: DiffSnapshot): Record<string, unk
   };
 }
 
+function assertHistoricalWorkflowIdentity(
+  workflow: DiffSnapshot,
+  expectedWorkflowId: string,
+  expectedVersionId: string,
+): void {
+  if (workflow.workflowId !== expectedWorkflowId || workflow.versionId !== expectedVersionId) {
+    throw new Error("n8n returned a different workflow version identity than requested.");
+  }
+}
+
 export const workflowTools: readonly ToolDefinition[] = Object.freeze([
   defineTool({
     name: "n8n_workflows_list",
@@ -699,9 +709,7 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
           path: `/workflows/${pathSegment(input.workflowId)}/${pathSegment(input.versionId)}`,
         }),
       );
-      if (historical.workflowId !== input.workflowId || historical.versionId !== input.versionId) {
-        throw new Error("n8n returned a different workflow version identity than requested.");
-      }
+      assertHistoricalWorkflowIdentity(historical, input.workflowId, input.versionId);
       return historicalWorkflowForOutput(historical);
     },
   }),
@@ -779,17 +787,22 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
           path: `/workflows/${pathSegment(input.workflowId)}/${pathSegment(input.fromVersionId)}`,
         }),
       );
-      const to = input.toVersionId
-        ? diffSnapshot(
-            await client.request({
-              path: `/workflows/${pathSegment(input.workflowId)}/${pathSegment(input.toVersionId)}`,
-            }),
-          )
-        : asHistoricalCurrent(
-            workflowSchema.parse(
-              await client.request({ path: `/workflows/${pathSegment(input.workflowId)}` }),
-            ),
-          );
+      assertHistoricalWorkflowIdentity(from, input.workflowId, input.fromVersionId);
+      let to: DiffSnapshot;
+      if (input.toVersionId) {
+        to = diffSnapshot(
+          await client.request({
+            path: `/workflows/${pathSegment(input.workflowId)}/${pathSegment(input.toVersionId)}`,
+          }),
+        );
+        assertHistoricalWorkflowIdentity(to, input.workflowId, input.toVersionId);
+      } else {
+        to = asHistoricalCurrent(
+          workflowSchema.parse(
+            await client.request({ path: `/workflows/${pathSegment(input.workflowId)}` }),
+          ),
+        );
+      }
       if (from.workflowId !== input.workflowId || to.workflowId !== input.workflowId) {
         throw new Error("A workflow snapshot did not belong to the requested workflow.");
       }

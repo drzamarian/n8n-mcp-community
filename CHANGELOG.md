@@ -6,7 +6,12 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
-No changes have been assigned beyond the first unpublished release candidate.
+### Fixed
+
+- Encode every valid email selector as one RFC 3986-safe path segment, including
+  apostrophe-containing addresses accepted by the public input contract.
+- Reject retained workflow snapshots whose returned version identity differs
+  from either selector requested by the workflow-diff tool.
 
 ## [0.1.0] - Unpublished candidate
 
