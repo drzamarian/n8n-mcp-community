@@ -14,12 +14,33 @@ node dist/index.js doctor
 ```
 
 If `dist/index.js` is missing, run `npm ci && npm run build`. If `doctor` fails,
-check the four variables in [Configuration](configuration.md). The CLI reports
-only a fixed error code on stderr; it does not echo the URL or key.
+check the four variables in [Configuration](configuration.md). On a configuration
+failure the CLI writes one fixed JSON line to stderr — for example
+`{"event":"startup_failed","code":"configuration_error","reason":"api_url_scheme_unsupported","setting":"N8N_API_URL"}` —
+that names the offending setting and the exact rule that failed. It never echoes
+the URL or key.
 
 An `Unknown command or option` failure means the client added an unsupported
 argument. The stdio server takes no arguments; all connection settings are
 environment variables.
+
+### Configuration failure reason codes
+
+Startup and `doctor` emit the same `configuration_error` line with a stable,
+secret-free `reason` and the `setting` to correct. Fix only the named setting.
+
+| Reason                         | Setting                   | Meaning                                                                |
+| ------------------------------ | ------------------------- | ---------------------------------------------------------------------- |
+| `mode_invalid`                 | `N8N_MCP_MODE`            | Not exactly `read-only`, `write`, or `unsafe`                          |
+| `insecure_http_flag_invalid`   | `N8N_ALLOW_INSECURE_HTTP` | Not exactly `0` or `1`                                                 |
+| `api_url_missing`              | `N8N_API_URL`             | Empty, whitespace-only, or unset                                       |
+| `api_key_missing`              | `N8N_API_KEY`             | Empty, whitespace-only, or unset                                       |
+| `api_key_invalid`              | `N8N_API_KEY`             | Contains characters illegal in an HTTP header value                    |
+| `api_url_invalid`              | `N8N_API_URL`             | Not a valid absolute URL                                               |
+| `api_url_scheme_unsupported`   | `N8N_API_URL`             | Scheme is not HTTP or HTTPS                                            |
+| `api_url_embedded_credentials` | `N8N_API_URL`             | Contains a username or password                                        |
+| `api_url_query_or_fragment`    | `N8N_API_URL`             | Contains a query string or fragment                                    |
+| `api_url_insecure_http`        | `N8N_API_URL`             | Plain HTTP for a non-loopback host without `N8N_ALLOW_INSECURE_HTTP=1` |
 
 ## The client shows no server or the wrong tool count
 
@@ -38,19 +59,20 @@ missing tool list; they affect connected calls only.
 Tool errors include a correlation ID. The server does not return upstream error
 bodies.
 
-| Code                  | Meaning                                                            | Safe next step                                                      |
-| --------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------- |
-| `configuration_error` | URL, key, mode, or HTTP policy is missing or invalid               | Run `doctor`; correct only the named setting                        |
-| `operation_denied`    | The current mode or exact confirmation does not authorize the call | Review the tool contract; elevate mode only if intended             |
-| `invalid_path`        | A generated Public API path failed local validation                | Record the tool and sanitized input shape; report if reproducible   |
-| `origin_mismatch`     | A generated URL did not retain the configured origin               | Stop and report privately                                           |
-| `request_too_large`   | The JSON request exceeded 2 MiB                                    | Narrow the operation or reduce workflow size                        |
-| `response_too_large`  | The response exceeded 2 MiB                                        | Use filters or smaller pages; avoid repeating the same broad call   |
-| `request_failed`      | No valid n8n response arrived before failure or timeout            | Check DNS, TLS, proxy, reachability, and n8n availability           |
-| `redirect_rejected`   | n8n or its proxy returned a redirect                               | Configure the final canonical base URL; do not bypass the control   |
-| `upstream_error`      | n8n returned a non-success HTTP status                             | Check API-key scope and n8n logs using the correlation time         |
-| `invalid_json`        | n8n returned empty-invalid, non-UTF-8, or malformed JSON           | Inspect the proxy and n8n response without sharing sensitive bodies |
-| `tool_error`          | A bounded schema, invariant, or tool-specific check failed         | Read the sanitized message and the tool's failure contract          |
+| Code                      | Meaning                                                            | Safe next step                                                                              |
+| ------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| `configuration_error`     | URL, key, mode, or HTTP policy is missing or invalid               | Run `doctor`; correct only the named setting                                                |
+| `operation_denied`        | The current mode or exact confirmation does not authorize the call | Review the tool contract; elevate mode only if intended                                     |
+| `invalid_path`            | A generated Public API path failed local validation                | Record the tool and sanitized input shape; report if reproducible                           |
+| `origin_mismatch`         | A generated URL did not retain the configured origin               | Stop and report privately                                                                   |
+| `request_too_large`       | The JSON request exceeded 2 MiB                                    | Narrow the operation or reduce workflow size                                                |
+| `response_too_large`      | The response exceeded 2 MiB                                        | Use filters or smaller pages; avoid repeating the same broad call                           |
+| `request_failed`          | No valid n8n response arrived before failure or timeout            | Check DNS, TLS, proxy, reachability, and n8n availability                                   |
+| `redirect_rejected`       | n8n or its proxy returned a redirect                               | Configure the final canonical base URL; do not bypass the control                           |
+| `upstream_error`          | n8n returned a non-success HTTP status                             | Check API-key scope and n8n logs using the correlation time                                 |
+| `invalid_json`            | n8n returned empty-invalid, non-UTF-8, or malformed JSON           | Inspect the proxy and n8n response without sharing sensitive bodies                         |
+| `upstream_shape_mismatch` | The n8n response did not match the supported API schema            | Most often the instance is below the documented 2.30.5 floor or a proxy altered the payload |
+| `tool_error`              | A local invariant or tool-specific check failed                    | Read the sanitized message and the tool's failure contract                                  |
 
 Input-schema failures may be represented by the MCP client before the handler
 runs. They should make zero upstream requests.
@@ -78,10 +100,12 @@ with other tools.
 
 ## Health fails but doctor passes
 
-`doctor` performs no network request. A pass proves configuration syntax, not
-DNS, TLS, network routing, API-key validity, or n8n health. Check that
-`N8N_API_URL` is the reachable base URL and that a reverse proxy does not
-redirect `/healthz`.
+`doctor` performs no network request by default. A default pass proves
+configuration syntax, not DNS, TLS, network routing, API-key validity, or n8n
+health. Check that `N8N_API_URL` is the reachable base URL and that a reverse
+proxy does not redirect `/healthz`. Setting `N8N_MCP_DOCTOR_PROBE=1` adds a
+bounded floor-compatibility probe of two single-item reads; see
+[Compatibility](compatibility.md) for its `diagnosis` values.
 
 ## HTTP is rejected
 

@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import {
   cp,
   mkdir,
@@ -14,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { zipSync } from "fflate";
+import { resolveNodeEntrypoint, resolveNpmCli, runPortableCommandSync } from "./portable-cli.mjs";
 
 const root = process.cwd();
 const dist = path.join(root, "dist");
@@ -25,20 +25,27 @@ const canonicalStage = path.join(temporaryRoot, "canonical");
 const manifestSource = path.join(root, "mcpb", "manifest.json");
 const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
 const output = path.join(dist, `n8n-mcp-community-${packageJson.version}.mcpb`);
+const npmCli = resolveNpmCli("npm");
+const mcpbCli = resolveNodeEntrypoint(
+  path.join(root, "node_modules", "@anthropic-ai", "mcpb", "dist", "cli", "cli.js"),
+  "MCPB",
+);
 
 function run(command, args, cwd = root) {
   const env = { ...process.env, npm_config_loglevel: "error" };
   delete env.npm_config_allow_scripts;
   delete env.NPM_CONFIG_ALLOW_SCRIPTS;
-  const result = spawnSync(command, args, {
+  return runPortableCommandSync(command, args, {
     cwd,
-    encoding: "utf8",
     env,
+    label: "An MCPB build subprocess",
+    maxBuffer: 16 * 1024 * 1024,
+    timeout: 120_000,
   });
-  if (result.status !== 0) {
-    throw new Error(`${command} ${args.join(" ")} failed: ${result.stderr.trim()}`);
-  }
-  return result.stdout.trim();
+}
+
+function runCli(cli, args, cwd = root) {
+  return run(cli.command, [...cli.argumentPrefix, ...args], cwd);
 }
 
 async function normalizeTimes(directory) {
@@ -94,8 +101,8 @@ try {
   await cp(path.join(root, "package.json"), path.join(server, "package.json"));
   await cp(path.join(root, "package-lock.json"), path.join(server, "package-lock.json"));
 
-  run(
-    "npm",
+  runCli(
+    npmCli,
     ["ci", "--offline", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"],
     server,
   );
@@ -119,12 +126,12 @@ try {
     )}\n`,
   );
 
-  run(path.join(root, "node_modules", ".bin", "mcpb"), ["validate", manifestSource]);
+  runCli(mcpbCli, ["validate", manifestSource]);
   await normalizeTimes(stage);
-  run(path.join(root, "node_modules", ".bin", "mcpb"), ["pack", stage, officialOutput]);
-  run(path.join(root, "node_modules", ".bin", "mcpb"), ["unpack", officialOutput, canonicalStage]);
+  runCli(mcpbCli, ["pack", stage, officialOutput]);
+  runCli(mcpbCli, ["unpack", officialOutput, canonicalStage]);
   const files = await writeCanonicalZip(canonicalStage, output);
-  run(path.join(root, "node_modules", ".bin", "mcpb"), ["info", output]);
+  runCli(mcpbCli, ["info", output]);
   const artifact = await stat(output);
   console.log(
     JSON.stringify(

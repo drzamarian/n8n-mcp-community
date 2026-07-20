@@ -1,0 +1,5 @@
+https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.code/
+https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.httprequest/
+https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.if/
+https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.splitinbatches/
+https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.webhook/

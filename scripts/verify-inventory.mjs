@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { PROMPT_NAMES } from "../dist/prompts.js";
 import { RESOURCE_URIS } from "../dist/resources.js";
 import { TOOL_DEFINITIONS } from "../dist/tools/registry.js";
+import { verifyOfficialUrlManifest } from "./verify-official-urls.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -57,14 +58,18 @@ for (const prompt of PROMPT_NAMES) {
   if (!readme.includes(`\`${prompt}\``)) throw new Error(`README is missing prompt ${prompt}.`);
 }
 
+const officialUrls = await verifyOfficialUrlManifest(ROOT);
+
 console.log(
   JSON.stringify(
     {
       tools: runtimeTools.length,
       resources: RESOURCE_URIS.length,
       prompts: PROMPT_NAMES.length,
+      officialUrls: officialUrls.length,
       readmeParity: true,
       referenceParity: true,
+      officialUrlParity: true,
       status: "pass",
     },
     null,

@@ -4,7 +4,7 @@ const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 const IDENTIFIER = /^[A-Za-z0-9_-]{1,128}$/;
 const PROTOTYPE_SEGMENT = /^(?:__proto__|prototype|constructor)$/;
 const MAX_SAFE_JSON_NODES = 20_000;
-const MUTABLE_NODE_ROOTS = new Set([
+export const MUTABLE_NODE_ROOTS = [
   "parameters",
   "position",
   "disabled",
@@ -17,7 +17,8 @@ const MUTABLE_NODE_ROOTS = new Set([
   "notesInFlow",
   "alwaysOutputData",
   "executeOnce",
-]);
+] as const;
+const MUTABLE_NODE_ROOT_SET = new Set<string>(MUTABLE_NODE_ROOTS);
 
 export const identifier = z
   .string()
@@ -88,6 +89,33 @@ export function assertSafeJson(value: unknown): void {
   }
 }
 
+// Depth-only bound for trusted upstream JSON (e.g. server-returned workflow data that must be
+// carried through unchanged). Unlike assertSafeJson it applies no breadth, prototype-key, or
+// plain-object restriction, so legitimately large or prototype-named pinned data still round-trips;
+// it only stops pathologically deep structures before native recursive passes (structuredClone,
+// canonicalization) would overflow the stack. The traversal itself is iterative, not recursive.
+export function assertBoundedDepth(value: unknown, maxDepth: number): void {
+  const stack: Array<{ value: unknown; depth: number }> = [{ value, depth: 0 }];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) continue;
+    if (current.depth > maxDepth) {
+      throw new Error(
+        "The workflow structure is nested more deeply than the safe processing limit.",
+      );
+    }
+    if (Array.isArray(current.value)) {
+      for (const child of current.value) {
+        stack.push({ value: child, depth: current.depth + 1 });
+      }
+    } else if (isRecord(current.value)) {
+      for (const child of Object.values(current.value)) {
+        stack.push({ value: child, depth: current.depth + 1 });
+      }
+    }
+  }
+}
+
 export const safeJsonValue = z.unknown().superRefine((value, context) => {
   try {
     assertSafeJson(value);
@@ -124,7 +152,7 @@ export function validateDotPath(path: string): readonly string[] {
     }
   }
   const root = segments[0];
-  if (!root || !MUTABLE_NODE_ROOTS.has(root)) {
+  if (!root || !MUTABLE_NODE_ROOT_SET.has(root)) {
     throw new Error("The update path targets an immutable or unsupported node field.");
   }
   if (
@@ -156,7 +184,13 @@ function writeChild(
   if (!/^\d+$/.test(segment)) {
     throw new Error("Array values require numeric path segments.");
   }
-  container[Number(segment)] = value;
+  const index = Number(segment);
+  if (index >= container.length) {
+    throw new Error(
+      "The update path targets an array index beyond the current array length; only existing indexes are addressable.",
+    );
+  }
+  container[index] = value;
 }
 
 export function setUnknownPath(

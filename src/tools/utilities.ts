@@ -2,7 +2,9 @@ import { z } from "zod";
 import {
   createN8nReadClient,
   inspectWorkflow,
+  IntrospectInputError,
   IntrospectInputSchema,
+  IntrospectOutputError,
   IntrospectResultSchema,
   renderIntrospect,
 } from "../introspect/index.js";
@@ -332,8 +334,11 @@ export const utilityTools: readonly ToolDefinition[] = Object.freeze([
     operation: "read-only",
     outputSchema: IntrospectResultSchema,
     formatResult: (value) => {
-      const result = IntrospectResultSchema.parse(value);
-      const sanitizedResult = sanitizeIntrospectResultForOutput(result);
+      // Validate the engine's own result as a local invariant: a mismatch is an internal
+      // output failure (invalid_output), never upstream n8n response-shape drift.
+      const parsedResult = IntrospectResultSchema.safeParse(value);
+      if (!parsedResult.success) throw new IntrospectOutputError();
+      const sanitizedResult = sanitizeIntrospectResultForOutput(parsedResult.data);
       const rendered = renderIntrospect(sanitizedResult);
       return {
         content: [
@@ -351,7 +356,12 @@ export const utilityTools: readonly ToolDefinition[] = Object.freeze([
       includeSanitizedLabels: z.boolean().default(false),
     },
     handler: async (input, context) => {
-      const parsed = IntrospectInputSchema.parse(input);
+      // Local input validation (including the quick-profile execution-count rule) fails
+      // closed as invalid_input before any n8n request, so it is never misreported as an
+      // upstream response-shape mismatch.
+      const parsedInput = IntrospectInputSchema.safeParse(input);
+      if (!parsedInput.success) throw new IntrospectInputError();
+      const parsed = parsedInput.data;
       const connection = context.connection();
       const readClient = createN8nReadClient({
         baseUrl: connection.apiUrl.href.replace(/\/$/, ""),

@@ -1,24 +1,31 @@
-import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { resolveNodeEntrypoint, resolveNpmCli, runPortableCommandSync } from "./portable-cli.mjs";
+import { canonicalSbomSha256 } from "./verify-release-artifacts.mjs";
 
 const root = process.cwd();
-const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+const npmCli = resolveNpmCli("npm");
+const mcpbCli = resolveNodeEntrypoint(
+  path.join(root, "node_modules", "@anthropic-ai", "mcpb", "dist", "cli", "cli.js"),
+  "MCPB",
+);
 const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "n8n-artifact-baseline-"));
 
 function run(command, args) {
-  const result = spawnSync(command, args, {
+  return runPortableCommandSync(command, args, {
     cwd: root,
-    encoding: "utf8",
     env: { ...process.env, npm_config_loglevel: "silent" },
+    label: "An artifact-baseline subprocess",
     maxBuffer: 16 * 1024 * 1024,
     timeout: 120_000,
   });
-  if (result.status !== 0) throw new Error(`${command} ${args.join(" ")} failed.`);
-  return result.stdout.trim();
+}
+
+function runCli(cli, args) {
+  return run(cli.command, [...cli.argumentPrefix, ...args]);
 }
 
 async function digest(file) {
@@ -42,9 +49,9 @@ async function filesUnder(directory, prefix = "") {
 
 try {
   const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
-  run(npmCommand, ["run", "build"]);
+  runCli(npmCli, ["run", "build"]);
   const packed = JSON.parse(
-    run(npmCommand, ["pack", "--json", "--ignore-scripts", "--pack-destination", temporaryRoot]),
+    runCli(npmCli, ["pack", "--json", "--ignore-scripts", "--pack-destination", temporaryRoot]),
   );
   const candidates = Array.isArray(packed) ? packed : Object.values(packed);
   if (candidates.length !== 1) throw new Error("Expected one npm artifact.");
@@ -55,12 +62,31 @@ try {
   run(process.execPath, [path.join(root, "scripts", "build-mcpb.mjs")]);
   const mcpbFile = path.join(root, "dist", `n8n-mcp-community-${packageJson.version}.mcpb`);
   const unpacked = path.join(temporaryRoot, "mcpb");
-  run(path.join(root, "node_modules", ".bin", "mcpb"), ["unpack", mcpbFile, unpacked]);
+  runCli(mcpbCli, ["unpack", mcpbFile, unpacked]);
   const mcpbFiles = await filesUnder(unpacked);
   const runtimeFiles = mcpbFiles
     .filter((file) => file.startsWith("server/dist/"))
     .map((file) => file.slice("server/dist/".length));
   const projectFiles = mcpbFiles.filter((file) => !file.startsWith("server/node_modules/"));
+
+  // Anchor the two release artifacts that ship alongside the tgz and mcpb but
+  // were previously only self-attested by SHA256SUMS. server.json hashes
+  // directly; the SBOM is hashed in canonical form so its run-varying
+  // serialNumber and timestamp do not defeat the digest.
+  const serverJsonSha256 = createHash("sha256")
+    .update(await readFile(path.join(root, "server.json")))
+    .digest("hex");
+  const sbomCanonicalSha256 = canonicalSbomSha256(
+    runCli(npmCli, [
+      "sbom",
+      "--package-lock-only",
+      "--omit=dev",
+      "--sbom-format",
+      "cyclonedx",
+      "--sbom-type",
+      "application",
+    ]),
+  );
 
   const baseline = {
     schemaVersion: 1,
@@ -77,6 +103,10 @@ try {
       runtimeFiles,
       projectFiles,
     },
+    release: {
+      serverJsonSha256,
+      sbomCanonicalSha256,
+    },
   };
   await writeFile(
     path.join(root, "release", "artifact-baseline.json"),
@@ -89,6 +119,8 @@ try {
       dependencyFiles: mcpbFiles.length - projectFiles.length,
       runtimeFiles: runtimeFiles.length,
       projectFiles: projectFiles.length,
+      serverJsonSha256,
+      sbomCanonicalSha256,
       status: "updated",
     }),
   );

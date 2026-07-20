@@ -5,7 +5,15 @@ import tseslint from "typescript-eslint";
 
 export default defineConfig(
   {
-    ignores: [".audit/**", "dist/**", ".test-dist/**", "node_modules/**", "coverage/**", "sdds/**"],
+    ignores: [
+      ".audit/**",
+      ".semgrep-rules/**",
+      "dist/**",
+      ".test-dist/**",
+      "node_modules/**",
+      "coverage/**",
+      "sdds/**",
+    ],
   },
   {
     files: ["**/*.js", "**/*.mjs"],
@@ -17,7 +25,7 @@ export default defineConfig(
     },
   },
   {
-    files: ["src/**/*.ts", "test/**/*.ts"],
+    files: ["src/**/*.ts", "test/**/*.ts", "scripts/portable-cli.mjs"],
     extends: [tseslint.configs.recommendedTypeChecked],
     languageOptions: {
       parserOptions: {

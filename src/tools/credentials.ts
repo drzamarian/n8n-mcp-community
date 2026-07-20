@@ -27,9 +27,19 @@ const credentialListSchema = z.object({
   nextCursor: cursor.nullable().optional(),
 });
 
+// n8n's canonical node credential reference is { id: string | null; name: string }, and legacy
+// imports can carry name-only strings or unresolved null ids. Coerce any shape to a bounded
+// { id } so a single unresolved reference can never abort the whole page scan; unresolved
+// references (null/absent/non-scalar id, or a legacy string form) are counted but never matched.
 const workflowCredentialReferenceSchema = z
-  .object({ id: z.union([z.string(), z.number()]).transform(String) })
-  .passthrough();
+  .unknown()
+  .transform((reference): { readonly id: string | null } => {
+    if (reference !== null && typeof reference === "object" && !Array.isArray(reference)) {
+      const { id } = reference as Record<string, unknown>;
+      if (typeof id === "string" || typeof id === "number") return { id: String(id) };
+    }
+    return { id: null };
+  });
 
 const usageWorkflowSchema = z.object({
   id: identifier,
@@ -188,15 +198,26 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
       expected: `TEST ${input.credentialId}`,
     }),
     handler: async (input, context) => {
-      const result = z
-        .object({ status: z.string().max(64), message: z.string().max(512).optional() })
-        .parse(
-          await context.client().request({
-            method: "POST",
-            path: `/credentials/${pathSegment(input.credentialId)}/test`,
-          }),
-        );
-      return { credentialId: input.credentialId, ...result };
+      // The external test already ran by the time this response arrives, so an over-long
+      // status/message must be truncated rather than rejected: discarding a completed outcome
+      // would report a generic error for a side effect that genuinely happened.
+      const raw = z.object({ status: z.string(), message: z.string().optional() }).parse(
+        await context.client().request({
+          method: "POST",
+          path: `/credentials/${pathSegment(input.credentialId)}/test`,
+        }),
+      );
+      const status = raw.status.slice(0, 64);
+      const message = raw.message === undefined ? undefined : raw.message.slice(0, 512);
+      const truncated =
+        status.length < raw.status.length ||
+        (raw.message !== undefined && message !== undefined && message.length < raw.message.length);
+      return {
+        credentialId: input.credentialId,
+        status,
+        ...(message === undefined ? {} : { message }),
+        ...(truncated ? { truncated: true } : {}),
+      };
     },
   }),
   defineTool({
@@ -226,7 +247,15 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
       let matchingWorkflowCount = 0;
       let omittedNodeDetails = 0;
       let retainedNodeDetails = 0;
+      let referencesScanned = 0;
+      let referencesUnresolved = 0;
       for (const workflow of page.data) {
+        for (const node of workflow.nodes) {
+          for (const reference of Object.values(node.credentials ?? {})) {
+            referencesScanned += 1;
+            if (reference.id === null) referencesUnresolved += 1;
+          }
+        }
         const nodes = workflow.nodes.filter((node) =>
           Object.values(node.credentials ?? {}).some(
             (reference) => reference.id === input.credentialId,
@@ -260,6 +289,8 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
         scanComplete: page.nextCursor === undefined || page.nextCursor === null,
         truncated: omittedNodeDetails > 0,
         omittedNodeDetails,
+        referencesScanned,
+        referencesUnresolved,
       };
     },
   }),

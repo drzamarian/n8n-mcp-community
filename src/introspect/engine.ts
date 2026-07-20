@@ -142,7 +142,10 @@ export function fitStructuredResult(result: IntrospectResult): IntrospectResult 
   if (!synchronizedResultFits()) {
     throw new IntrospectOutputError("The fixed Introspect contract exceeds its output budget.");
   }
-  return IntrospectResultSchema.parse(reduced);
+  // A mismatch here is an internal engine invariant failure, never upstream n8n shape drift.
+  const fitted = IntrospectResultSchema.safeParse(reduced);
+  if (!fitted.success) throw new IntrospectOutputError();
+  return fitted.data;
 }
 
 export async function inspectWorkflow(
@@ -173,7 +176,9 @@ export async function inspectWorkflow(
     );
   }
 
-  const result = IntrospectResultSchema.parse({
+  // The assembled result is a local invariant: a mismatch is an internal output failure
+  // (invalid_output), never upstream n8n response-shape drift.
+  const assembled = IntrospectResultSchema.safeParse({
     schemaVersion: INTROSPECT_SCHEMA_VERSION,
     engineVersion: INTROSPECT_ENGINE_VERSION,
     status:
@@ -217,6 +222,7 @@ export async function inspectWorkflow(
         "Use n8n_audit_generate for instance-wide security facts; this report inspects one saved workflow and a bounded execution sample.",
     },
   });
+  if (!assembled.success) throw new IntrospectOutputError();
 
-  return fitStructuredResult(result);
+  return fitStructuredResult(assembled.data);
 }

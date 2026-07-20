@@ -9,6 +9,7 @@ files itself and accepts no secrets as command-line arguments.
 | `N8N_API_KEY`             | For connected tools | None        | Dedicated n8n Public API key                                           |
 | `N8N_MCP_MODE`            | No                  | `read-only` | Exactly `read-only`, `write`, or `unsafe`                              |
 | `N8N_ALLOW_INSECURE_HTTP` | No                  | `0`         | Exactly `0` or `1`; permits non-loopback plaintext HTTP when `1`       |
+| `N8N_MCP_DOCTOR_PROBE`    | No                  | unset       | Exactly `1` makes `doctor` run a bounded floor-compatibility probe     |
 
 The MCP server starts offline. `N8N_API_URL` and `N8N_API_KEY` are validated
 only when a connected tool is called or when `doctor` is run. Inventory,

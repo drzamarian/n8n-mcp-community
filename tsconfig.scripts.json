@@ -2,12 +2,12 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "rootDir": ".",
-    "outDir": ".test-dist",
+    "noEmit": true,
     "allowJs": true,
     "checkJs": true,
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "scripts/portable-cli.mjs"]
+  "include": ["scripts/portable-cli.mjs"]
 }

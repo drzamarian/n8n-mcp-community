@@ -6,8 +6,62 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Every confirmation-guarded tool now documents its exact required confirmation
+  phrase (for example `DELETE <workflowId>`) directly in the `confirmation`
+  field description, derived from the tool's own confirmation function so the
+  documented and enforced phrases can never drift. The phrase is discoverable in
+  the tool schema an MCP client sees, yet is still never echoed back on a
+  mismatch, so the deliberate-action guard is preserved.
+
+### Added
+
+- Optional `doctor` floor-compatibility probe behind `N8N_MCP_DOCTOR_PROBE=1`:
+  two bounded single-item reads diagnose `floor_compatible`,
+  `below_floor_indicators`, or `inconclusive` without claiming a remote version.
+
 ### Fixed
 
+- Redact URL userinfo credentials, cookie and session values, suffixed secret
+  keys, and complete quoted multi-word secrets in strings.
+- Reject API keys that are illegal HTTP header values at configuration load and
+  keep request-construction failures value-free.
+- Validate surgical node updates against per-field type contracts and
+  re-validate the mutated node before any write reaches n8n.
+- Stop re-validating trusted server round-trip data under caller input rules so
+  workflows with large or prototype-keyed upstream data remain updatable.
+- Reject out-of-bounds array indexes in update paths instead of fabricating
+  sparse null elements.
+- Exclude pinned data from workflow-diff and introspect reads, and fail before
+  writing when an instance omits workflow version identity.
+- Distinguish below-floor endpoint absence from retention pruning in
+  version-history errors and add version-floor guidance to floor-marker 404s.
+- Tolerate name-only credential references in usage scans and expose value-free
+  coverage counts instead of aborting.
+- Report over-cap successful mutations as truncated successes, derive
+  execution-stop outcomes from the validated upstream body, and preserve
+  completed credential-test outcomes by truncating over-long diagnostics.
+- Map upstream response-shape mismatches to a stable `upstream_shape_mismatch`
+  code without exposing schema internals.
+- Emit stable, secret-free configuration reason codes aligned with `doctor`
+  guidance, and end broken-stdio sessions with one structured stderr line.
+- Count literal secrets in canonical `{name, value}` parameter entries and
+  recognize core entry nodes without "trigger" in their type names.
+- Authenticate artifact-baseline approval receipts with an operator-held HMAC
+  key, bind `server.json` and SBOM digests to the reviewed baseline, verify the
+  MCPB dependency file count, and pin gitleaks and npm versions in CI.
+- Remove private identifiers from the public-language gate, scan the gate
+  itself, and align registry metadata with the HTTP(S) connection contract.
+
+- Report all mutable node execution-behavior fields in value-free workflow
+  diffs instead of silently omitting nine supported fields, while normalizing
+  absent and explicit `false` default-false flags.
+- Validate the real n8n invitation response, report truthful delivery metadata,
+  and keep capability-bearing invitation URLs out of MCP output.
+- Invoke npm, npx-compatible execution, and MCPB through JavaScript entrypoints
+  so package, audit, baseline, and bundle gates remain shell-free and portable
+  on Windows and Corepack-managed layouts.
 - Encode every valid email selector as one RFC 3986-safe path segment, including
   apostrophe-containing addresses accepted by the public input contract.
 - Reject retained workflow snapshots whose returned version identity differs

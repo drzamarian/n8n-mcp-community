@@ -98,10 +98,10 @@
     "sbom:full": "npm sbom --package-lock-only --sbom-format cyclonedx --sbom-type application",
     "test:contract": "npm run build && npm run test:compile && node --test --test-concurrency=1 .test-dist/test/mcp-contract.test.js .test-dist/test/n8n-client.test.js .test-dist/test/tool-contract.test.js",
     "test:coverage": "npm run build && npm run test:compile && node --test --test-concurrency=1 --experimental-test-coverage --test-coverage-include='.test-dist/src/**/*.js' --test-coverage-exclude='.test-dist/src/index.js' --test-coverage-lines=90 --test-coverage-functions=90 --test-coverage-branches=85 .test-dist/test/**/*.test.js",
-    "test:compile": "node scripts/clean.mjs test && tsc -p tsconfig.test.json --pretty false",
+    "test:compile": "node scripts/clean.mjs test && tsc -p tsconfig.test.json --pretty false && node scripts/clean.mjs test-helper",
     "test:examples": "npm run build && node scripts/verify-examples.mjs",
     "test": "npm run build && npm run test:compile && node --test --test-concurrency=1 .test-dist/test/**/*.test.js",
-    "typecheck": "tsc --noEmit --pretty false",
+    "typecheck": "tsc --noEmit --pretty false && tsc -p tsconfig.scripts.json --pretty false",
     "check": "npm run format:check && npm run licenses:check && npm run lint && npm run typecheck && npm test && npm run check:readme-count && npm run check:metadata && npm run check:release && npm run check:docs && npm run check:language && npm run test:examples && npm run check:inventory && npm run check:public-boundary && npm run check:artifact-review",
     "verify": "npm run check && npm run test:coverage && npm run check:distribution && npm run check:registry"
   },

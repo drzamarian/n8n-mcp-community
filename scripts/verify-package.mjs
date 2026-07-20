@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -7,12 +6,12 @@ import process from "node:process";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { verifyArtifactReviewForPackageState } from "./artifact-review.mjs";
+import { resolveNpmCli, resolveNpxInvocation, runPortableCommandSync } from "./portable-cli.mjs";
 import { isForbiddenPublicPath } from "./public-boundary-policy.mjs";
 
 const root = process.cwd();
 const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "n8n-mcp-community-npm-"));
-const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-const npxCommand = process.platform === "win32" ? "npx.cmd" : "npx";
+const npmCli = resolveNpmCli("npm");
 const artifactBaseline = JSON.parse(
   await readFile(path.join(root, "release", "artifact-baseline.json"), "utf8"),
 );
@@ -28,18 +27,19 @@ function run(command, args, cwd = root, extraEnv = {}) {
   const env = { ...process.env, ...extraEnv, npm_config_loglevel: "silent" };
   delete env.npm_config_allow_scripts;
   delete env.NPM_CONFIG_ALLOW_SCRIPTS;
-  const result = spawnSync(command, args, {
+  const entrypoint =
+    args[0] && path.isAbsolute(args[0]) ? path.basename(args[0]) : path.basename(command);
+  return runPortableCommandSync(command, args, {
     cwd,
-    encoding: "utf8",
     env,
     timeout: 60_000,
     maxBuffer: 8 * 1024 * 1024,
+    label: `Package verification subprocess (${entrypoint})`,
   });
-  if (result.status !== 0) {
-    const reason = result.error?.code === "ETIMEDOUT" ? "timed out" : "failed";
-    throw new Error(`${command} ${args.join(" ")} ${reason}.`);
-  }
-  return result.stdout.trim();
+}
+
+function runNpm(args, cwd = root, extraEnv = {}) {
+  return run(npmCli.command, [...npmCli.argumentPrefix, ...args], cwd, extraEnv);
 }
 
 function hasExactInstalledIdentity(installedManifest, expectedManifest, artifact) {
@@ -64,8 +64,7 @@ async function verifyPublicManifestRoundTrip() {
     `${JSON.stringify({ name: "public-state-roundtrip", version: "1.2.3-rc.1", private: false })}\n`,
   );
   const packed = JSON.parse(
-    run(
-      npmCommand,
+    runNpm(
       ["pack", "--json", "--ignore-scripts", "--pack-destination", temporaryRoot],
       packageRoot,
       isolatedCacheEnvironment,
@@ -78,8 +77,7 @@ async function verifyPublicManifestRoundTrip() {
     path.join(installRoot, "package.json"),
     `${JSON.stringify({ name: "public-state-installer", version: "1.0.0", private: true })}\n`,
   );
-  run(
-    npmCommand,
+  runNpm(
     [
       "install",
       "--offline",
@@ -138,7 +136,7 @@ await verifyArtifactReviewForPackageState(root, sourceManifest.private);
 
 try {
   const packed = JSON.parse(
-    run(npmCommand, ["pack", "--json", "--ignore-scripts", "--pack-destination", temporaryRoot]),
+    runNpm(["pack", "--json", "--ignore-scripts", "--pack-destination", temporaryRoot]),
   );
   const candidates = Array.isArray(packed) ? packed : Object.values(packed);
   const artifact = candidates[0];
@@ -174,8 +172,7 @@ try {
     path.join(temporaryRoot, "package-lock.json"),
     `${JSON.stringify({ name: "artifact-verifier", version: "1.0.0", lockfileVersion: 3, packages: { "": { name: "artifact-verifier", version: "1.0.0" } } })}\n`,
   );
-  run(
-    npmCommand,
+  runNpm(
     ["install", "--offline", "--ignore-scripts", "--no-audit", "--no-fund", tarball],
     temporaryRoot,
   );
@@ -203,9 +200,9 @@ try {
   if (run(process.execPath, [entry, "--version"], temporaryRoot) !== artifact.version) {
     throw new Error("Installed npm artifact returned the wrong CLI version.");
   }
+  const npxInvocation = resolveNpxInvocation(["--no-install", "n8n-mcp-community", "--version"]);
   if (
-    run(npxCommand, ["--no-install", "n8n-mcp-community", "--version"], temporaryRoot) !==
-    artifact.version
+    run(npxInvocation.command, npxInvocation.argumentPrefix, temporaryRoot) !== artifact.version
   ) {
     throw new Error("Installed npm artifact failed the npx binary smoke test.");
   }

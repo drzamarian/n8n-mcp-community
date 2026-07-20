@@ -4,6 +4,25 @@ const MAX_REQUEST_BYTES = 2 * 1024 * 1024;
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 20_000;
 
+/**
+ * Bounded set of Public API path prefixes whose entire namespace is available only
+ * from the documented n8n Community 2.30.5 floor onward (see docs/compatibility.md).
+ * A 404 on one of these on an otherwise-reachable instance is a below-floor indicator,
+ * so the upstream_error message names the floor. Kept deliberately narrow: `/workflows`
+ * is excluded because it exists below the floor and its version-history 404 is already
+ * mapped by the workflow tools, so guidance here would double-transform it.
+ */
+const FLOOR_MARKER_PATH_PREFIXES = ["/credentials", "/insights", "/community-packages"] as const;
+
+const FLOOR_GUIDANCE =
+  "This endpoint requires the documented support floor, n8n Community 2.30.5 or newer, or the resource does not exist.";
+
+function isFloorMarkerPath(path: string): boolean {
+  return FLOOR_MARKER_PATH_PREFIXES.some(
+    (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+  );
+}
+
 function isSafeEncodedPath(path: string): boolean {
   if (!/^\/[A-Za-z0-9_./%~-]*$/.test(path) || /%(?![A-Fa-f0-9]{2})/.test(path)) {
     return false;
@@ -113,18 +132,21 @@ export class N8nClient {
       );
     }
 
-    const headers = new Headers({ "X-N8N-API-KEY": this.#config.apiKey });
     let body: string | undefined;
     if (options.body !== undefined) {
       body = JSON.stringify(options.body);
       if (Buffer.byteLength(body) > MAX_REQUEST_BYTES) {
         throw new N8nApiError("request_too_large", "The n8n request exceeds the 2 MiB limit.");
       }
-      headers.set("Content-Type", "application/json");
     }
 
     let response: Response;
     try {
+      // Construct the headers inside the try so an API key that is not a legal HTTP
+      // header value maps to the constant request_failed message instead of a raw
+      // TypeError whose text can embed the key.
+      const headers = new Headers({ "X-N8N-API-KEY": this.#config.apiKey });
+      if (body !== undefined) headers.set("Content-Type", "application/json");
       response = await fetch(url, {
         method: options.method ?? "GET",
         headers,
@@ -157,11 +179,16 @@ export class N8nClient {
     }
     const bytes = await readBounded(response);
     if (!response.ok) {
-      throw new N8nApiError(
-        "upstream_error",
-        `The n8n API returned HTTP ${response.status}.`,
-        response.status,
-      );
+      // A 404 on a floor-marker Public API path (namespaces present only from the
+      // documented 2.30.5 floor) carries a stable, secret-free guidance sentence naming
+      // the floor. The error code and status are unchanged, so any tool-level 404 mapping
+      // that keys on error.status still fires; this only enriches the message additively.
+      const base = `The n8n API returned HTTP ${response.status}.`;
+      const message =
+        response.status === 404 && !options.root && isFloorMarkerPath(options.path)
+          ? `${base} ${FLOOR_GUIDANCE}`
+          : base;
+      throw new N8nApiError("upstream_error", message, response.status);
     }
     if (options.responseMode === "status") {
       return { ok: true, status: response.status };

@@ -517,3 +517,82 @@ test("workflow response ID mismatch fails closed", async () => {
   );
   assert.equal(client.calls.length, 1);
 });
+
+test("literal secrets in the {name, value} parameter-entry shape are counted value-free", async () => {
+  const HEADER_SECRET = ["Bearer", "sk", "live", "realsecretvalue123456"].join("-");
+  const QUERY_SECRET = ["query", "literal", "9f2c17ab"].join("-");
+  const collectNode = async (parameters: Record<string, unknown>) => {
+    const client = new RecordingClient((call) =>
+      call.endpoint.startsWith("/workflows/")
+        ? {
+            value: workflow({
+              nodes: [
+                {
+                  name: "HTTP Request",
+                  type: "n8n-nodes-base.httpRequest",
+                  typeVersion: 4,
+                  parameters,
+                },
+              ],
+            }),
+            bytes: 100,
+          }
+        : { value: { data: [], nextCursor: null }, bytes: 10 },
+    );
+    const result = await collectSnapshot(client, input());
+    const firstNode = result.workflow.nodes[0];
+    assert(firstNode);
+    return { firstNode, serialized: JSON.stringify(result) };
+  };
+
+  // n8n's canonical HTTP Request header shape: secret name is a sibling of the value.
+  const header = await collectNode({
+    headerParameters: { parameters: [{ name: "Authorization", value: HEADER_SECRET }] },
+  });
+  assert.equal(header.firstNode.literalSecretCount, 1);
+  assert.equal(header.serialized.includes(HEADER_SECRET), false);
+
+  // The same shape for query parameters is also detected.
+  const query = await collectNode({
+    queryParameters: { parameters: [{ name: "api_key", value: QUERY_SECRET }] },
+  });
+  assert.equal(query.firstNode.literalSecretCount, 1);
+  assert.equal(query.serialized.includes(QUERY_SECRET), false);
+
+  // Negative: a non-secret sibling name is not a finding.
+  const nonSecretName = await collectNode({
+    headerParameters: { parameters: [{ name: "Content-Type", value: "application/json" }] },
+  });
+  assert.equal(nonSecretName.firstNode.literalSecretCount, 0);
+
+  // Negative: an n8n expression value under a secret name is not a literal secret.
+  const expressionValue = await collectNode({
+    headerParameters: {
+      parameters: [{ name: "Authorization", value: "={{ $credentials.token }}" }],
+    },
+  });
+  assert.equal(expressionValue.firstNode.literalSecretCount, 0);
+});
+
+test("the workflow read excludes pinned data so oversized pinData cannot fail the introspect scan", async () => {
+  const client = new RecordingClient((call) => {
+    if (call.endpoint.startsWith("/workflows/")) {
+      if (call.query.excludePinnedData !== "true") {
+        // Without excludePinnedData the >1MB pinData would blow the bounded byte cap
+        // and hard-fail the entire tool on the very first request.
+        throw new IntrospectCollectionError(
+          "response_too_large",
+          "The public n8n API response exceeded the Introspect byte limit.",
+        );
+      }
+      return { value: workflow(), bytes: 1_000 };
+    }
+    return { value: { data: [], nextCursor: null }, bytes: 10 };
+  });
+  const result = await collectSnapshot(client, input());
+  const workflowCall = client.calls.find((call) => call.endpoint.startsWith("/workflows/"));
+  assert(workflowCall);
+  assert.equal(workflowCall.query.excludePinnedData, "true");
+  assert.equal(result.workflow.id, "workflow-1");
+  assert.equal(result.status, "complete");
+});

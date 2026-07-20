@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "packageVersion": "0.1.0",
   "npm": {
-    "sha256": "2f46ec21b3c23b5ca3784df3f41d752c05fef79ddffc9a7828746d2034902486",
+    "sha256": "59545d5c226138a56ff280c2850cd548085d2b6558b7dc780a93b961f5e30095",
     "fileCount": 59,
     "files": [
       "CHANGELOG.md",
@@ -67,7 +67,7 @@
     ]
   },
   "mcpb": {
-    "sha256": "b9f91d6a2e3e5b3c57a283570b3bc7020f2b2cbe3315e7f11f5c33b64495c921",
+    "sha256": "748163aa64839fd59928a2b158e14e0de00ea16f288f778707377a6b861e7306",
     "totalFileCount": 2182,
     "dependencyFileCount": 2145,
     "runtimeFiles": [
@@ -144,5 +144,9 @@
       "server/dist/version.js",
       "server/package.json"
     ]
+  },
+  "release": {
+    "serverJsonSha256": "f9aedc1bd2a40ac430818b55c549eb85993f047bd509c081b80ff3f86c53dad9",
+    "sbomCanonicalSha256": "4881e17deed296b24bacad4410775bb82efc265d682917838f65c372fa1ba45b"
   }
 }

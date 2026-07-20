@@ -152,11 +152,22 @@ function graphIsReliable(graph: GraphContext): boolean {
   );
 }
 
+// Bounded, best-effort allowlist of core n8n entry/trigger node types whose type
+// string does not contain the substring "trigger". This is an explicit, non-
+// exhaustive convenience set: it makes no completeness or availability claim and
+// only prevents false GRAPH_UNREACHABLE_NODE findings for recognized entry nodes.
+// Values are lowercased to match the case-folded comparison in isTrigger.
+const CORE_ENTRY_NODE_TYPES: ReadonlySet<string> = new Set([
+  "n8n-nodes-base.start",
+  "n8n-nodes-base.webhook",
+  "n8n-nodes-base.cron",
+  "n8n-nodes-base.interval",
+  "n8n-nodes-base.emailreadimap",
+]);
+
 function isTrigger(info: NodeInfo): boolean {
   const type = (info.node.type ?? "").toLowerCase();
-  return (
-    type.includes("trigger") || type === "n8n-nodes-base.start" || type === "n8n-nodes-base.webhook"
-  );
+  return type.includes("trigger") || CORE_ENTRY_NODE_TYPES.has(type);
 }
 
 function reachableFrom(graph: GraphContext, roots: ReadonlyArray<number>): Set<number> {

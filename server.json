@@ -21,7 +21,7 @@
       "environmentVariables": [
         {
           "name": "N8N_API_URL",
-          "description": "Absolute HTTPS base URL for the intended self-hosted n8n instance.",
+          "description": "Absolute HTTP(S) base URL for the intended self-hosted n8n instance; plaintext HTTP is limited to loopback unless explicitly allowed.",
           "isRequired": true,
           "isSecret": true
         },

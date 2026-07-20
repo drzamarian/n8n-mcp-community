@@ -79,6 +79,83 @@ test("the main client rejects invalid paths before fetch", async () => {
   );
 });
 
+test("the main client never echoes an illegal API-key header value in errors", async () => {
+  const maliciousKey = "secret\nkey-π";
+  const hostileConfig = { apiUrl: new URL("https://n8n.example.test/base"), apiKey: maliciousKey };
+  let fetchCalled = false;
+  await withFetch(
+    async () => {
+      fetchCalled = true;
+      return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    },
+    async () => {
+      await assert.rejects(
+        () => new N8nClient(hostileConfig).request({ path: "/workflows" }),
+        (error: unknown) =>
+          error instanceof N8nApiError &&
+          error.code === "request_failed" &&
+          !error.message.includes("secret") &&
+          !error.message.includes("key-π") &&
+          !error.message.includes(maliciousKey),
+      );
+    },
+  );
+  assert.equal(fetchCalled, false);
+});
+
+test("a floor-marker 404 attaches version-floor guidance to the upstream error", async () => {
+  for (const path of [
+    "/credentials",
+    "/credentials/abc",
+    "/insights/summary",
+    "/community-packages",
+  ]) {
+    await withFetch(
+      async () => new Response("{}", { status: 404 }),
+      async () => {
+        await assert.rejects(
+          () => new N8nClient(config).request({ path }),
+          (error: unknown) =>
+            error instanceof N8nApiError &&
+            error.code === "upstream_error" &&
+            error.status === 404 &&
+            error.message.startsWith("The n8n API returned HTTP 404.") &&
+            error.message.includes("n8n Community 2.30.5"),
+          path,
+        );
+      },
+    );
+  }
+});
+
+test("a non-marker 404 carries no version-floor guidance and keeps the bare upstream message", async () => {
+  // `/workflows` sub-paths are excluded on purpose: they exist below the floor and the
+  // version-history 404 is already mapped by the workflow tools, so no floor guidance here.
+  for (const path of [
+    "/workflows",
+    "/workflows/wf_1",
+    "/workflows/wf_1/v6",
+    "/tags",
+    "/executions",
+  ]) {
+    await withFetch(
+      async () => new Response("{}", { status: 404 }),
+      async () => {
+        await assert.rejects(
+          () => new N8nClient(config).request({ path }),
+          (error: unknown) =>
+            error instanceof N8nApiError &&
+            error.code === "upstream_error" &&
+            error.status === 404 &&
+            error.message === "The n8n API returned HTTP 404." &&
+            !error.message.includes("2.30.5"),
+          path,
+        );
+      },
+    );
+  }
+});
+
 test("redirects, oversized declarations, invalid JSON, and upstream bodies fail safely", async () => {
   const fixtures = [
     new Response(null, { status: 302, headers: { location: "https://evil.example.test" } }),

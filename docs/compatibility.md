@@ -39,6 +39,38 @@ capabilities as Community features. Other tools may also depend on endpoint
 availability and the permissions assigned to the API key; an HTTP 403 does not
 by itself mean the endpoint is absent.
 
+## Below-floor instances
+
+The n8n Public API does not expose an instance version, so this server never
+detects, reports, or fabricates a running n8n version. Instead, floor
+compatibility is diagnosed from endpoint availability, and an operator pointed at
+an instance below the 2.30.5 floor will observe the following.
+
+`doctor` performs no network request by default. Setting `N8N_MCP_DOCTOR_PROBE=1`
+makes it run a bounded, read-only floor probe against the configured instance:
+a single-page (`limit=1`) read of `GET /workflows` (a reachability control
+present on every release) and `GET /credentials` (a namespace available only from
+the 2.30.5 floor). The probe reads no workflow, credential, or other value — only
+whether each endpoint is `available`, `not_found`, or `error` — and emits one
+overall `diagnosis`:
+
+- `floor_compatible` — the instance is reachable and every floor-marker endpoint
+  responded.
+- `below_floor_indicators` — the instance is reachable but a floor-marker endpoint
+  returned 404, which is characteristic of a release below the documented floor.
+- `inconclusive` — the instance could not be reached usefully, or a marker failed
+  for a reason that does not distinguish version (for example an HTTP 403 from
+  API-key scope, or a 5xx).
+
+At the tool layer, a request that fails with HTTP 404 against a floor-marker
+namespace (`/credentials`, `/insights`, `/community-packages`) returns the stable
+`upstream_error` code with a guidance sentence naming the floor: "This endpoint
+requires the documented support floor, n8n Community 2.30.5 or newer, or the
+resource does not exist." The workflow version-history endpoint keeps its own
+existing 404 mapping and is deliberately excluded from this guidance to avoid a
+double diagnosis. No URL, response body, or version number is included in either
+surface.
+
 ## Deliberate exclusions
 
 v0.1.0 does not include:

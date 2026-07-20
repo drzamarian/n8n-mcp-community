@@ -610,6 +610,32 @@ test("the legacy Start node is a reachability root", () => {
   assert.equal(outcome("GRAPH_UNREACHABLE_NODE", value), "passed");
 });
 
+test("core entry nodes without 'trigger' in the type are reachability roots", () => {
+  const value = workflowSnapshot(
+    [
+      node({ ref: "node-1", type: "n8n-nodes-base.scheduleTrigger" }),
+      node({ ref: "node-2", type: "n8n-nodes-base.set" }),
+      node({ ref: "node-3", type: "n8n-nodes-base.emailReadImap" }),
+      node({ ref: "node-4", type: "n8n-nodes-base.set" }),
+      node({ ref: "node-5", type: "n8n-nodes-base.set" }),
+    ],
+    [
+      { sourceIndex: 0, targetIndex: 1 },
+      { sourceIndex: 2, targetIndex: 3 },
+    ],
+  );
+  const evaluation = evaluateRules(value);
+  const record = evaluation.coverage.find((item) => item.ruleId === "GRAPH_UNREACHABLE_NODE");
+  assert.equal(record?.outcome, "triggered");
+  const unreachableKeys = evaluation.findings
+    .filter((item) => item.ruleId === "GRAPH_UNREACHABLE_NODE")
+    .map((item) => item.affectedEntity.key);
+  // The Email Trigger (IMAP) branch is recognized as a root, so neither the trigger
+  // (node-3) nor its downstream node (node-4) is falsely unreachable. Only the
+  // genuinely orphaned node-5 is reported.
+  assert.deepEqual(unreachableKeys, ["node-5"]);
+});
+
 const findingSchemaFixture = {
   id: "finding-1",
   ruleId: "GRAPH_DANGLING_SOURCE",

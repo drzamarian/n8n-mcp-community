@@ -7,6 +7,7 @@ import path from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
 import { signMcpbFile } from "@anthropic-ai/mcpb/node";
+import { trustedSystemEnv } from "./portable-cli.mjs";
 import { PUBLIC_CERTIFICATE_NAMES } from "./public-boundary-policy.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -162,7 +163,11 @@ async function loadActivePolicy(policyPath) {
 
 async function runOpenSsl(args) {
   try {
-    return await execFileAsync("openssl", args, { encoding: "utf8", maxBuffer: 1024 * 1024 });
+    return await execFileAsync("openssl", args, {
+      encoding: "utf8",
+      env: trustedSystemEnv(),
+      maxBuffer: 1024 * 1024,
+    });
   } catch {
     throw new Error("MCPB CMS signature or pinned certificate-chain verification failed.");
   }
@@ -519,6 +524,62 @@ async function runSelfTest() {
     await writeFile(corruptedPath, corrupted, { mode: 0o600 });
     await assert.rejects(
       verifySignedMcpb(unsignedPath, corruptedPath, sha256(corrupted), policyPath),
+      /CMS signature or pinned certificate-chain verification failed/,
+    );
+
+    // Pin the load-bearing last-occurrence, exact-tail framing: a genuine signed
+    // file whose payload itself embeds both magic sequences (plus a decoy length)
+    // must still frame the real trailing block via lastIndexOf, not a forward scan.
+    const magicPayload = Buffer.concat([
+      Buffer.from("prefix::", "utf8"),
+      SIGNATURE_HEADER,
+      Buffer.from([0x2a, 0x00, 0x00, 0x00]),
+      Buffer.from("::decoy-signature-body::", "utf8"),
+      SIGNATURE_FOOTER,
+      Buffer.from("::payload-suffix", "utf8"),
+    ]);
+    const magicUnsignedPath = path.join(temporaryRoot, "magic-payload.mcpb");
+    const magicSignedPath = path.join(temporaryRoot, "magic-payload-signed.mcpb");
+    await writeFile(magicUnsignedPath, magicPayload, { mode: 0o600 });
+    await copyFile(magicUnsignedPath, magicSignedPath);
+    signMcpbFile(magicSignedPath, leaf.certificatePath, leaf.keyPath);
+    const magicSignedContent = Buffer.from(await readFile(magicSignedPath));
+    const magicDigest = sha256(magicSignedContent);
+    const magicResult = await verifySignedMcpb(
+      magicUnsignedPath,
+      magicSignedPath,
+      magicDigest,
+      policyPath,
+    );
+    assert.equal(
+      magicResult.status,
+      "pass",
+      "Last-occurrence framing must verify a magic payload.",
+    );
+    assert.equal(
+      magicResult.payloadSha256,
+      sha256(magicPayload),
+      "Framing must recover the exact embedded-magic payload.",
+    );
+
+    // A truncated trailing block (last byte dropped) must break the exact-tail
+    // footer check even though the payload still contains a stray footer.
+    const truncatedMagicPath = path.join(temporaryRoot, "magic-payload-truncated.mcpb");
+    const truncatedMagic = magicSignedContent.subarray(0, magicSignedContent.length - 1);
+    await writeFile(truncatedMagicPath, truncatedMagic, { mode: 0o600 });
+    await assert.rejects(
+      verifySignedMcpb(magicUnsignedPath, truncatedMagicPath, sha256(truncatedMagic), policyPath),
+      /signature footer/,
+    );
+
+    // Corrupting the real trailing signature (not the decoy in the payload) must
+    // still be rejected by the CMS verification.
+    const corruptedMagicPath = path.join(temporaryRoot, "magic-payload-corrupted.mcpb");
+    const corruptedMagic = Buffer.from(magicSignedContent);
+    corruptedMagic[magicPayload.length + SIGNATURE_HEADER.length + 4 + 10] ^= 0xff;
+    await writeFile(corruptedMagicPath, corruptedMagic, { mode: 0o600 });
+    await assert.rejects(
+      verifySignedMcpb(magicUnsignedPath, corruptedMagicPath, sha256(corruptedMagic), policyPath),
       /CMS signature or pinned certificate-chain verification failed/,
     );
 

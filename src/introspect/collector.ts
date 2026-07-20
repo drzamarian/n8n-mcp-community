@@ -178,6 +178,24 @@ function safeExecutionId(id: string): boolean {
   return /^[A-Za-z0-9_-]{1,128}$/.test(id);
 }
 
+/**
+ * A string value counts as a literal secret when it is a real value rather than an
+ * n8n expression (`=` / `={{ ... }}`), an environment reference, or an obvious
+ * placeholder (asterisks, `[REDACTED]`-style tokens, or `<...>` templates). Only the
+ * boolean verdict is used; the value itself is never retained.
+ */
+function isLiteralSecretValue(value: string): boolean {
+  const trimmed = value.trim();
+  return (
+    trimmed !== "" &&
+    !trimmed.startsWith("=") &&
+    !trimmed.includes("$env") &&
+    !/^\*+$/.test(trimmed) &&
+    !/^\[[A-Z_-]+\]$/.test(trimmed) &&
+    !/^<[^>]+>$/.test(trimmed)
+  );
+}
+
 function analyzeParameters(value: unknown, maxEntries = 1_000) {
   const seen = new WeakSet<object>();
   const references = new Set<string>();
@@ -215,19 +233,24 @@ function analyzeParameters(value: unknown, maxEntries = 1_000) {
           idempotencyHeaderMissingValue = true;
         }
       }
-    }
-    if (typeof current.value === "string" && secretKey.test(current.key)) {
-      const trimmed = current.value.trim();
+      // n8n's canonical parameter-entry shape stores the secret-indicating name in a
+      // sibling `name`/`key` field and the literal in `value`
+      // (e.g. headerParameters.parameters: [{ name: "Authorization", value: "Bearer ..." }]).
       if (
-        trimmed !== "" &&
-        !trimmed.startsWith("=") &&
-        !trimmed.includes("$env") &&
-        !/^\*+$/.test(trimmed) &&
-        !/^\[[A-Z_-]+\]$/.test(trimmed) &&
-        !/^<[^>]+>$/.test(trimmed)
+        headerName !== undefined &&
+        secretKey.test(headerName) &&
+        typeof record.value === "string" &&
+        isLiteralSecretValue(record.value)
       ) {
         literalSecretCount += 1;
       }
+    }
+    if (
+      typeof current.value === "string" &&
+      secretKey.test(current.key) &&
+      isLiteralSecretValue(current.value)
+    ) {
+      literalSecretCount += 1;
     }
     if (typeof current.value === "string" && current.value.includes("$")) {
       const patterns = [
@@ -574,7 +597,9 @@ export async function collectSnapshot(
 
   const workflowRead = await read(
     `/workflows/${encodeURIComponent(input.workflowId)}`,
-    {},
+    // Exclude pinned data: Introspect never reads pinData, and including it can push
+    // an otherwise small workflow past the bounded byte cap and hard-fail the tool.
+    { excludePinnedData: "true" },
     profileBudget.workflowBytes,
   );
   const rawWorkflow = parseOrThrow(WorkflowResponseSchema, workflowRead.value);

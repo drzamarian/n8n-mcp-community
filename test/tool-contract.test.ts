@@ -233,7 +233,22 @@ function createMockFetch(requests: CapturedRequest[]): typeof fetch {
         nextCursor: null,
       });
     }
-    if (path === "/api/v1/users" && method === "POST") return json({ invited: true });
+    if (path === "/api/v1/users" && method === "POST") {
+      return json(
+        [
+          {
+            user: {
+              id: "user_2",
+              email: "member@example.test",
+              role: "global:member",
+              emailSent: true,
+            },
+            error: "",
+          },
+        ],
+        201,
+      );
+    }
     if (path === "/api/v1/users/user_1" && method === "GET") {
       return json({
         id: "user_1",
@@ -655,6 +670,23 @@ test("nine read-only tools reject malformed input before any upstream request", 
   });
 });
 
+test("introspect rejects a local input-rule violation as invalid_input, not an upstream mismatch", async () => {
+  const requests: CapturedRequest[] = [];
+  await withConnectedClient(createMockFetch(requests), async (client) => {
+    // The quick profile caps executions at 25; the SDK per-field schema admits maxExecutions
+    // up to 100, so this cross-field rule is enforced locally in the handler before any request.
+    const result = await client.callTool({
+      name: "n8n_introspect",
+      arguments: { workflowId: "wf_1", profile: "quick", maxExecutions: 50 },
+    });
+    assert.equal(result.isError, true);
+    const serialized = JSON.stringify(result);
+    assert.match(serialized, /invalid_input/);
+    assert.equal(serialized.includes("upstream_shape_mismatch"), false);
+    assert.equal(requests.length, 0);
+  });
+});
+
 test("read-only tools reject malformed upstream data or prove no untrusted body exists", async () => {
   const responseCases: ReadonlyArray<readonly [string, Record<string, unknown>, unknown]> = [
     ["n8n_workflows_get", { workflowId: "wf_1" }, { ...workflow, nodes: "invalid" }],
@@ -679,7 +711,7 @@ test("read-only tools reject malformed upstream data or prove no untrusted body 
       async (client) => {
         const result = await client.callTool({ name, arguments: arguments_ });
         assert.equal(result.isError, true, `${name} should reject malformed upstream data`);
-        assert.match(JSON.stringify(result), /tool_error/);
+        assert.match(JSON.stringify(result), /upstream_shape_mismatch/);
       },
     );
     assert.equal(requests, 1);
@@ -830,11 +862,141 @@ test("collection tools reject paginated overflow and truncate unpaginated arrays
           assert.equal(data.data.length, 100);
         } else {
           assert.equal(result.isError, true, `${name} should reject paginated overflow`);
-          assert.match(JSON.stringify(result), /tool_error/);
+          assert.match(JSON.stringify(result), /upstream_shape_mismatch/);
         }
       },
     );
   }
+});
+
+test("workflow update fails closed on pathologically deep upstream data without a PUT", async () => {
+  // A trusted-but-deeply-nested server response must not reach structuredClone/canonicalize and
+  // overflow the stack; it fails closed with a bounded error and issues zero writes.
+  let deep: Record<string, unknown> = { leaf: true };
+  for (let i = 0; i < 400; i += 1) deep = { nested: deep };
+  const deepWorkflow = { ...workflow, settings: deep };
+  const requests: CapturedRequest[] = [];
+  await withConnectedClient(
+    async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      const url = new URL(request.url);
+      requests.push({
+        method: request.method,
+        pathname: url.pathname,
+        search: url.search,
+        body: null,
+      });
+      if (request.method === "GET" && url.pathname === "/api/v1/workflows/wf_1") {
+        return json(deepWorkflow);
+      }
+      throw new Error(`unexpected request ${request.method} ${url.pathname}`);
+    },
+    async (client) => {
+      const result = await client.callTool({
+        name: "n8n_workflows_update",
+        arguments: { workflowId: "wf_1", expectedVersionId: "v2", name: "Renamed" },
+      });
+      assert.equal(result.isError, true);
+      const serialized = JSON.stringify(result);
+      assert.match(serialized, /nested more deeply than the safe processing limit/);
+      assert.equal(serialized.includes("upstream_shape_mismatch"), false);
+      assert.equal(
+        requests.some((entry) => entry.method === "PUT"),
+        false,
+      );
+    },
+  );
+});
+
+test("workflow update tolerates n8n returning pinData:null when the source omitted pinned data", async () => {
+  // The pre-write GET omits pinData/staticData (undefined); n8n's PUT response reports that
+  // absent data as null. Both mean "no data", so a successful update must not trip the
+  // sensitive-data preservation alarm.
+  const sourceWorkflow = {
+    id: "wf_1",
+    versionId: "v2",
+    name: "Order workflow",
+    active: false,
+    isArchived: false,
+    nodes: [node],
+    connections: {},
+    settings: { executionOrder: "v1" },
+  };
+  await withConnectedClient(
+    async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      const url = new URL(request.url);
+      const rawBody = await request.clone().text();
+      const body = rawBody === "" ? null : (JSON.parse(rawBody) as unknown);
+      if (url.pathname === "/api/v1/workflows/wf_1" && request.method === "GET") {
+        return json(sourceWorkflow);
+      }
+      if (url.pathname === "/api/v1/workflows/wf_1" && request.method === "PUT") {
+        return json({
+          ...sourceWorkflow,
+          ...objectBody(body),
+          id: "wf_1",
+          versionId: "v3",
+          pinData: null,
+          staticData: null,
+        });
+      }
+      return json({ message: "No fixture" }, 404);
+    },
+    async (client) => {
+      const result = await client.callTool({
+        name: "n8n_workflows_update",
+        arguments: { workflowId: "wf_1", expectedVersionId: "v2", name: "Renamed" },
+      });
+      assert.equal(result.isError, undefined, JSON.stringify(result));
+    },
+  );
+});
+
+test("workflow update still fails closed when n8n adds pinned data the source did not carry", async () => {
+  // Control: undefined -> actual data is a real, silent data change and must still throw the
+  // sensitive-data preservation alarm, proving the nullish normalization did not over-relax.
+  const sourceWorkflow = {
+    id: "wf_1",
+    versionId: "v2",
+    name: "Order workflow",
+    active: false,
+    isArchived: false,
+    nodes: [node],
+    connections: {},
+    settings: { executionOrder: "v1" },
+  };
+  await withConnectedClient(
+    async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      const url = new URL(request.url);
+      const rawBody = await request.clone().text();
+      const body = rawBody === "" ? null : (JSON.parse(rawBody) as unknown);
+      if (url.pathname === "/api/v1/workflows/wf_1" && request.method === "GET") {
+        return json(sourceWorkflow);
+      }
+      if (url.pathname === "/api/v1/workflows/wf_1" && request.method === "PUT") {
+        return json({
+          ...sourceWorkflow,
+          ...objectBody(body),
+          id: "wf_1",
+          versionId: "v3",
+          pinData: { Webhook: [{ json: { injected: OUTPUT_CANARY } }] },
+        });
+      }
+      return json({ message: "No fixture" }, 404);
+    },
+    async (client) => {
+      const result = await client.callTool({
+        name: "n8n_workflows_update",
+        arguments: { workflowId: "wf_1", expectedVersionId: "v2", name: "Renamed" },
+      });
+      assert.equal(result.isError, true);
+      const serialized = JSON.stringify(result);
+      assert.match(serialized, /did not preserve pinned or static workflow data/);
+      assert.equal(serialized.includes(OUTPUT_CANARY), false);
+    },
+  );
 });
 
 async function connect(mode: "read-only" | "unsafe") {
@@ -1051,6 +1213,7 @@ test("all 44 tools complete their positive MCP contract against a bounded Public
     assert.deepEqual(plainJson(results.get("n8n_executions_stop")), {
       executionId: "exec_1",
       stopped: true,
+      state: "stopped",
       status: "canceled",
       stoppedAt: "2026-07-17T12:00:02.000Z",
     });
@@ -2158,6 +2321,290 @@ test("workflow diff reports value-free metadata and multi-node changes without e
   );
 });
 
+test("workflow diff reports every mutable execution-behavior node field", async () => {
+  const before = {
+    ...historicalWorkflow,
+    versionId: "v1",
+    nodes: [{ ...node, parameters: {} }],
+  };
+  const after = {
+    ...historicalWorkflow,
+    versionId: "v2",
+    nodes: [
+      {
+        ...node,
+        parameters: {},
+        onError: "continueRegularOutput",
+        retryOnFail: true,
+        maxTries: 5,
+        waitBetweenTries: 2_000,
+        continueOnFail: true,
+        notes: "Operational note",
+        notesInFlow: true,
+        alwaysOutputData: true,
+        executeOnce: true,
+      },
+    ],
+  };
+
+  await withConnectedClient(
+    async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      return json(new URL(request.url).pathname.endsWith("/v1") ? before : after);
+    },
+    async (client) => {
+      const result = await client.callTool({
+        name: "n8n_workflows_diff",
+        arguments: { workflowId: "wf_1", fromVersionId: "v1", toVersionId: "v2" },
+      });
+      assert.equal(result.isError, undefined);
+      const structured = result.structuredContent;
+      assert(structured && typeof structured === "object" && "data" in structured);
+      const data = objectBody(structured.data ?? null);
+      const changes = data.changes;
+      assert(Array.isArray(changes));
+      const change = (changes as unknown[]).find(
+        (candidate) => objectBody(candidate).kind === "node_modified",
+      );
+      assert(change);
+      assert.deepEqual(objectBody(change).fields, [
+        "retryOnFail",
+        "maxTries",
+        "waitBetweenTries",
+        "continueOnFail",
+        "onError",
+        "notes",
+        "notesInFlow",
+        "alwaysOutputData",
+        "executeOnce",
+      ]);
+      assert.deepEqual(plainJson(data.summary), {
+        workflowNameChanged: null,
+        nodesAdded: 0,
+        nodesRemoved: 0,
+        nodesModified: 1,
+        connectionsChanged: false,
+        totalChanges: 1,
+      });
+    },
+  );
+});
+
+test("workflow diff normalizes absent and explicit false execution booleans", async () => {
+  const before = {
+    ...historicalWorkflow,
+    versionId: "v1",
+    nodes: [{ ...node, parameters: {} }],
+  };
+  const after = {
+    ...historicalWorkflow,
+    versionId: "v2",
+    nodes: [
+      {
+        ...node,
+        parameters: {},
+        disabled: false,
+        retryOnFail: false,
+        continueOnFail: false,
+        notesInFlow: false,
+        alwaysOutputData: false,
+        executeOnce: false,
+      },
+    ],
+  };
+
+  await withConnectedClient(
+    async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      return json(new URL(request.url).pathname.endsWith("/v1") ? before : after);
+    },
+    async (client) => {
+      const result = await client.callTool({
+        name: "n8n_workflows_diff",
+        arguments: { workflowId: "wf_1", fromVersionId: "v1", toVersionId: "v2" },
+      });
+      assert.equal(result.isError, undefined);
+      const structured = result.structuredContent;
+      assert(structured && typeof structured === "object" && "data" in structured);
+      const data = objectBody(structured.data ?? null);
+      assert.deepEqual(plainJson(data.changes), []);
+      assert.deepEqual(plainJson(data.summary), {
+        workflowNameChanged: null,
+        nodesAdded: 0,
+        nodesRemoved: 0,
+        nodesModified: 0,
+        connectionsChanged: false,
+        totalChanges: 0,
+      });
+    },
+  );
+});
+
+test("workflow diff conservatively reports omitted versus explicit numeric retry settings", async () => {
+  const before = {
+    ...historicalWorkflow,
+    versionId: "v1",
+    nodes: [{ ...node, parameters: {}, retryOnFail: true }],
+  };
+  const after = {
+    ...historicalWorkflow,
+    versionId: "v2",
+    nodes: [
+      {
+        ...node,
+        parameters: {},
+        retryOnFail: true,
+        maxTries: 3,
+        waitBetweenTries: 1_000,
+      },
+    ],
+  };
+
+  await withConnectedClient(
+    async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      return json(new URL(request.url).pathname.endsWith("/v1") ? before : after);
+    },
+    async (client) => {
+      const result = await client.callTool({
+        name: "n8n_workflows_diff",
+        arguments: { workflowId: "wf_1", fromVersionId: "v1", toVersionId: "v2" },
+      });
+      assert.equal(result.isError, undefined);
+      const structured = result.structuredContent;
+      assert(structured && typeof structured === "object" && "data" in structured);
+      const data = objectBody(structured.data ?? null);
+      const changes = data.changes;
+      assert(Array.isArray(changes));
+      const change = (changes as unknown[]).find(
+        (candidate) => objectBody(candidate).kind === "node_modified",
+      );
+      assert(change);
+      assert.deepEqual(objectBody(change).fields, ["maxTries", "waitBetweenTries"]);
+    },
+  );
+});
+
+test("user invitation preserves the real delivery outcome without returning the bearer link", async () => {
+  await withConnectedClient(
+    async () =>
+      json(
+        [
+          {
+            user: {
+              id: "user_2",
+              email: "member@example.test",
+              emailSent: false,
+              inviteAcceptUrl: "https://n8n.example.test/signup?token=one-time-invite-capability",
+            },
+            error: "",
+          },
+        ],
+        201,
+      ),
+    async (client) => {
+      const result = await client.callTool({
+        name: "n8n_users_create",
+        arguments: CALLS.n8n_users_create,
+      });
+      assert.equal(result.isError, undefined);
+      const structured = result.structuredContent;
+      assert(structured && typeof structured === "object" && "data" in structured);
+      const data = plainJson(structured.data);
+      assert.deepEqual(data, {
+        userCreated: true,
+        invited: true,
+        userId: "user_2",
+        email: "[EMAIL]",
+        requestedRole: "global:member",
+        roleConfirmedByResponse: false,
+        emailSent: false,
+        delivery: "manual_link_available_in_n8n",
+        inviteAcceptUrlReturned: false,
+      });
+      assert(!JSON.stringify(result).includes("member@example.test"));
+      assert(!JSON.stringify(result).includes("one-time-invite-capability"));
+    },
+  );
+});
+
+test("user invitation accepts n8n's lowercase normalization of a mixed-case email", async () => {
+  const requestedEmail = "Member@Example.Test";
+  await withConnectedClient(
+    async () =>
+      json(
+        [
+          {
+            user: {
+              id: "user_2",
+              email: requestedEmail.toLowerCase(),
+              emailSent: true,
+            },
+            error: "",
+          },
+        ],
+        201,
+      ),
+    async (client) => {
+      const result = await client.callTool({
+        name: "n8n_users_create",
+        arguments: {
+          email: requestedEmail,
+          role: "global:member",
+          confirmation: `INVITE ${requestedEmail}`,
+        },
+      });
+      assert.equal(result.isError, undefined);
+      const serialized = JSON.stringify(result);
+      assert(!serialized.includes(requestedEmail));
+      assert(!serialized.includes(requestedEmail.toLowerCase()));
+      assert.match(serialized, /"userCreated":true/);
+      assert.match(serialized, /"delivery":"email_sent"/);
+    },
+  );
+});
+
+test("user invitation rejects empty and per-item failure responses instead of fabricating success", async () => {
+  for (const response of [
+    [],
+    [
+      {
+        user: {
+          id: "user_2",
+          email: "member@example.test",
+          role: "global:member",
+          emailSent: false,
+        },
+        error: "The invitation email could not be sent.",
+      },
+    ],
+    [
+      {
+        user: {
+          id: "user_2",
+          email: "member@example.test",
+          role: "global:admin",
+          emailSent: true,
+        },
+        error: "",
+      },
+    ],
+  ]) {
+    await withConnectedClient(
+      async () => json(response, 201),
+      async (client) => {
+        const result = await client.callTool({
+          name: "n8n_users_create",
+          arguments: CALLS.n8n_users_create,
+        });
+        assert.equal(result.isError, true);
+        assert.match(JSON.stringify(result), /did not confirm the requested invitation/i);
+        assert(!JSON.stringify(result).includes("could not be sent"));
+      },
+    );
+  }
+});
+
 test("credential usage enforces exact IDs, pagination privacy, and both detail caps", async () => {
   const matchingWorkflows = Array.from({ length: 11 }, (_, workflowIndex) => ({
     id: `wf_${workflowIndex}`,
@@ -2343,4 +2790,282 @@ test("workflow search truncates only when more than 50 matches exist", async () 
       assert.equal(overData.matches.length, 50);
     },
   );
+});
+
+test("node update rejects field-type-contract violations before issuing any write", async () => {
+  const invalidValues: ReadonlyArray<readonly [string, unknown]> = [
+    ["disabled", "yes"],
+    ["maxTries", "many"],
+    ["waitBetweenTries", -5],
+    ["onError", "explode"],
+    ["notesInFlow", 1],
+    ["position.0", "left"],
+  ];
+  for (const [path, value] of invalidValues) {
+    const requests: CapturedRequest[] = [];
+    await withConnectedClient(
+      async (input, init) => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        const url = new URL(request.url);
+        const rawBody = await request.clone().text();
+        requests.push({
+          method: request.method,
+          pathname: url.pathname,
+          search: url.search,
+          body: rawBody === "" ? null : (JSON.parse(rawBody) as unknown),
+        });
+        return json(workflow);
+      },
+      async (client) => {
+        const result = await client.callTool({
+          name: "n8n_update_node",
+          arguments: { ...CALLS.n8n_update_node, path, value },
+        });
+        assert.equal(result.isError, true, `${path}=${JSON.stringify(value)} must be rejected`);
+      },
+    );
+    assert.equal(
+      requests.filter((request) => request.method !== "GET").length,
+      0,
+      `${path} must issue zero write requests`,
+    );
+  }
+});
+
+test("node update applies a valid typed field value and confirms it landed", async () => {
+  const requests: CapturedRequest[] = [];
+  await withConnectedClient(
+    async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      const url = new URL(request.url);
+      const rawBody = await request.clone().text();
+      const body: unknown | null = rawBody === "" ? null : JSON.parse(rawBody);
+      requests.push({ method: request.method, pathname: url.pathname, search: url.search, body });
+      if (request.method === "GET") return json(workflow);
+      return json({ ...workflow, ...objectBody(body), versionId: "v3" });
+    },
+    async (client) => {
+      const result = await client.callTool({
+        name: "n8n_update_node",
+        arguments: { ...CALLS.n8n_update_node, path: "onError", value: "stopWorkflow" },
+      });
+      assert.equal(result.isError, undefined, JSON.stringify(result));
+      const put = requests.find((request) => request.method === "PUT");
+      assert(put);
+      const nodes = objectBody(put.body).nodes;
+      assert(Array.isArray(nodes));
+      assert.equal(objectBody(nodes[0]).onError, "stopWorkflow");
+    },
+  );
+});
+
+test("workflow rename succeeds despite prototype-like keys and deep upstream node data", async () => {
+  let deep: Record<string, unknown> = { leaf: "deep-value" };
+  for (let level = 0; level < 25; level += 1) deep = { nested: deep };
+  const constructorValue = { note: "prototype-like key preserved from upstream" };
+  const adversarialNode = {
+    ...node,
+    parameters: { constructor: constructorValue, deep },
+  };
+  const adversarialWorkflow = { ...workflow, nodes: [adversarialNode] };
+  const requests: CapturedRequest[] = [];
+  await withConnectedClient(
+    async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      const url = new URL(request.url);
+      const rawBody = await request.clone().text();
+      const body: unknown | null = rawBody === "" ? null : JSON.parse(rawBody);
+      requests.push({ method: request.method, pathname: url.pathname, search: url.search, body });
+      if (request.method === "GET") return json(adversarialWorkflow);
+      return json({ ...adversarialWorkflow, ...objectBody(body), versionId: "v3" });
+    },
+    async (client) => {
+      const result = await client.callTool({
+        name: "n8n_workflows_update",
+        arguments: { workflowId: "wf_1", expectedVersionId: "v2", name: "Renamed" },
+      });
+      assert.equal(result.isError, undefined, JSON.stringify(result));
+      const put = requests.find((request) => request.method === "PUT");
+      assert(put);
+      const putBody = objectBody(put.body);
+      assert.equal(putBody.name, "Renamed");
+      const nodes = putBody.nodes;
+      assert(Array.isArray(nodes));
+      const params = objectBody(objectBody(nodes[0]).parameters);
+      assert.deepEqual(params["constructor"], constructorValue);
+      assert.deepEqual(params["deep"], deep);
+    },
+  );
+});
+
+test("workflow writes still reject caller-supplied prototype keys before any request", async () => {
+  const requests: CapturedRequest[] = [];
+  await withConnectedClient(createMockFetch(requests), async (client) => {
+    const callerCases = [
+      {
+        name: "n8n_update_node",
+        arguments: {
+          ...CALLS.n8n_update_node,
+          path: "parameters.injected",
+          value: { constructor: { polluted: true } },
+        },
+      },
+      {
+        name: "n8n_workflows_update",
+        arguments: {
+          workflowId: "wf_1",
+          expectedVersionId: "v2",
+          pinData: { constructor: { polluted: true } },
+        },
+      },
+    ];
+    for (const call of callerCases) {
+      const result = await client.callTool(call);
+      assert.equal(result.isError, true, `${call.name} must reject caller prototype keys`);
+    }
+    assert.equal(requests.length, 0);
+    assert.equal(Object.hasOwn(Object.prototype, "polluted"), false);
+  });
+});
+
+test("node update rejects an out-of-bounds array index without fabricating sparse nulls", async () => {
+  const rulesNode = { ...node, parameters: { rules: ["only"] } };
+  const rulesWorkflow = { ...workflow, nodes: [rulesNode] };
+  const rejectRequests: CapturedRequest[] = [];
+  await withConnectedClient(
+    async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      const url = new URL(request.url);
+      const rawBody = await request.clone().text();
+      rejectRequests.push({
+        method: request.method,
+        pathname: url.pathname,
+        search: url.search,
+        body: rawBody === "" ? null : (JSON.parse(rawBody) as unknown),
+      });
+      return json(rulesWorkflow);
+    },
+    async (client) => {
+      const result = await client.callTool({
+        name: "n8n_update_node",
+        arguments: { ...CALLS.n8n_update_node, path: "parameters.rules.5", value: "X" },
+      });
+      assert.equal(result.isError, true);
+      assert.match(JSON.stringify(result), /array index beyond/i);
+    },
+  );
+  assert.equal(rejectRequests.filter((request) => request.method === "PUT").length, 0);
+  assert.equal(
+    rejectRequests.every((request) => request.method === "GET"),
+    true,
+  );
+
+  const applyRequests: CapturedRequest[] = [];
+  await withConnectedClient(
+    async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      const url = new URL(request.url);
+      const rawBody = await request.clone().text();
+      const body: unknown | null = rawBody === "" ? null : JSON.parse(rawBody);
+      applyRequests.push({
+        method: request.method,
+        pathname: url.pathname,
+        search: url.search,
+        body,
+      });
+      if (request.method === "GET") return json(rulesWorkflow);
+      return json({ ...rulesWorkflow, ...objectBody(body), versionId: "v3" });
+    },
+    async (client) => {
+      const result = await client.callTool({
+        name: "n8n_update_node",
+        arguments: { ...CALLS.n8n_update_node, path: "parameters.rules.0", value: "replaced" },
+      });
+      assert.equal(result.isError, undefined, JSON.stringify(result));
+      const put = applyRequests.find((request) => request.method === "PUT");
+      assert(put);
+      const nodes = objectBody(put.body).nodes;
+      assert(Array.isArray(nodes));
+      assert.deepEqual(objectBody(objectBody(nodes[0]).parameters).rules, ["replaced"]);
+    },
+  );
+});
+
+test("workflow diff to current requests the current workflow without pinned data", async () => {
+  const requests: CapturedRequest[] = [];
+  await withConnectedClient(createMockFetch(requests), async (client) => {
+    const result = await client.callTool({
+      name: "n8n_workflows_diff",
+      arguments: { workflowId: "wf_1", fromVersionId: "v1" },
+    });
+    assert.equal(result.isError, undefined);
+    const currentRead = requests.find(
+      (request) => request.pathname === "/api/v1/workflows/wf_1" && request.method === "GET",
+    );
+    assert(currentRead);
+    assert.equal(new URLSearchParams(currentRead.search).get("excludePinnedData"), "true");
+    const versionRead = requests.find(
+      (request) => request.pathname === "/api/v1/workflows/wf_1/v1",
+    );
+    assert(versionRead);
+    assert.equal(new URLSearchParams(versionRead.search).has("excludePinnedData"), false);
+  });
+});
+
+test("workflow updates fail with an explicit unsupported-version error when versionId is absent", async () => {
+  for (const call of [
+    {
+      name: "n8n_workflows_update",
+      arguments: { workflowId: "wf_1", expectedVersionId: "v2", name: "Renamed" },
+    },
+    { name: "n8n_update_node", arguments: CALLS.n8n_update_node },
+  ]) {
+    const requests: CapturedRequest[] = [];
+    await withConnectedClient(
+      async (input, init) => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        const url = new URL(request.url);
+        requests.push({
+          method: request.method,
+          pathname: url.pathname,
+          search: url.search,
+          body: null,
+        });
+        return json({ ...workflow, versionId: undefined });
+      },
+      async (client) => {
+        const result = await client.callTool(call);
+        assert.equal(result.isError, true);
+        const serialized = JSON.stringify(result);
+        assert.match(serialized, /version_identity_unsupported/);
+        assert.match(serialized, /2\.30\.5/);
+        assert.doesNotMatch(serialized, /version changed/i);
+      },
+    );
+    assert.equal(
+      requests.every((request) => request.method === "GET"),
+      true,
+      `${call.name} must issue no write request`,
+    );
+    assert.equal(requests.filter((request) => request.method === "PUT").length, 0);
+  }
+});
+
+test("version-history 404 distinguishes below-floor absence from pruned retention", async () => {
+  for (const call of [
+    { name: "n8n_workflows_get_version", arguments: CALLS.n8n_workflows_get_version },
+    { name: "n8n_workflows_diff", arguments: { workflowId: "wf_1", fromVersionId: "v1" } },
+  ]) {
+    await withConnectedClient(
+      async () => json({ message: "Not Found" }, 404),
+      async (client) => {
+        const result = await client.callTool(call);
+        assert.equal(result.isError, true);
+        const serialized = JSON.stringify(result);
+        assert.match(serialized, /version_history_unavailable/);
+        assert.match(serialized, /2\.30\.5/);
+        assert.match(serialized, /prune|retention/i);
+      },
+    );
+  }
 });

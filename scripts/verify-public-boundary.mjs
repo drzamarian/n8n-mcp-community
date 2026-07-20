@@ -8,6 +8,7 @@ import {
   isForbiddenPublicPath,
   PUBLIC_CERTIFICATE_NAMES,
 } from "./public-boundary-policy.mjs";
+import { trustedSystemEnv } from "./portable-cli.mjs";
 
 const root = process.cwd();
 const ARTIFACT_REVIEW_RECEIPT_PATH = "release/artifact-baseline-review.json";
@@ -26,6 +27,7 @@ function runGit(args, errorMessage, options = {}, repositoryRoot = root) {
     timeout: 10_000,
     maxBuffer: 8 * 1024 * 1024,
     ...options,
+    env: trustedSystemEnv(options.env),
   });
   if (result.status !== 0) throw new Error(errorMessage);
   return result;
@@ -184,6 +186,7 @@ function selfTestHistoryBoundary() {
 const tracked = spawnSync("git", ["ls-files", "-z"], {
   cwd: root,
   encoding: "buffer",
+  env: trustedSystemEnv(),
   timeout: 10_000,
   maxBuffer: 4 * 1024 * 1024,
 });
@@ -271,6 +274,7 @@ const ignoredSamples = [
 for (const sample of ignoredSamples) {
   const check = spawnSync("git", ["check-ignore", "--no-index", "--quiet", sample], {
     cwd: root,
+    env: trustedSystemEnv(),
     timeout: 5_000,
   });
   if (check.status !== 0) throw new Error(`.gitignore does not exclude private sample: ${sample}`);
@@ -280,6 +284,7 @@ const publicCertificateSamples = [...FIXED_PUBLIC_CERTIFICATE_PATHS];
 for (const sample of publicCertificateSamples) {
   const check = spawnSync("git", ["check-ignore", "--no-index", "--quiet", sample], {
     cwd: root,
+    env: trustedSystemEnv(),
     timeout: 5_000,
   });
   if (check.status !== 1) {

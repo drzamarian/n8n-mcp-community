@@ -353,6 +353,171 @@ test("unknown-safe traversal changes only the requested path and cannot pollute 
   assert.equal(Object.hasOwn(Object.prototype, "polluted"), false);
 });
 
+test("URL userinfo credentials are redacted across host shapes without corrupting bare URLs", () => {
+  const password = "S3cretPass99";
+  const result = sanitizeForOutput({
+    parameters: {
+      dottedHost: `https://admin:${password}@api.example.com/webhook`,
+      singleLabel: "http://admin:hunter2@localhost:5678/webhook",
+      ipv4: `http://backup:${password}@192.168.1.5/api/trigger`,
+      ipv6: `http://svc:${password}@[::1]:8080/health`,
+      percentEncoded: "redis://user:p%40ss%3Aword@cache:6379",
+      // Userinfo contains a literal "@" and the host is a single label (Docker/k8s
+      // service name), so the userinfo must be matched to the LAST "@" before the host.
+      // (Keys are neutral so structural key-name redaction does not mask the URL rule.)
+      mongoUri: "mongodb://user:My@Secret123@mongo/admin",
+      redisUri: "redis://admin:P@ss@localhost:6379/0",
+      noUserinfo: "https://api.example.com:5678/webhook?limit=5",
+    },
+  });
+  const data = (result.data as { parameters: Record<string, string> }).parameters;
+  const serialized = JSON.stringify(result);
+  assert.equal(result.redacted, true);
+  assert.equal(serialized.includes(password), false);
+  assert.equal(serialized.includes("hunter2"), false);
+  assert.equal(serialized.includes("p%40ss%3Aword"), false);
+  assert.equal(serialized.includes("Secret123"), false);
+  assert.equal(serialized.includes("ss@localhost"), false);
+  assert.equal(data.dottedHost, "https://[REDACTED]@api.example.com/webhook");
+  assert.equal(data.singleLabel, "http://[REDACTED]@localhost:5678/webhook");
+  assert.equal(data.ipv4, "http://[REDACTED]@192.168.1.5/api/trigger");
+  assert.equal(data.ipv6, "http://[REDACTED]@[::1]:8080/health");
+  assert.equal(data.percentEncoded, "redis://[REDACTED]@cache:6379");
+  assert.equal(data.mongoUri, "mongodb://[REDACTED]@mongo/admin");
+  assert.equal(data.redisUri, "redis://[REDACTED]@localhost:6379/0");
+  assert.equal(data.noUserinfo, "https://api.example.com:5678/webhook?limit=5");
+});
+
+test("cookie and session values are redacted in strings while non-secret neighbors survive", () => {
+  const token = "a1b2c3d4e5f6a7b8"; // synthetic redaction canary, not a real secret. gitleaks:allow
+  const result = sanitizeForOutput({
+    parameters: {
+      jsonHeaders: `{"Cookie": "session=${token}"}`,
+      headerLine: `Cookie: sessionid=${token}; Path=/`,
+      plainAssign: `cookie=${token}`,
+      sidAssign: `sessionId=${token}`,
+      underscoreAssign: `session_token=${token}`,
+      multiPair: `a=1; connect.sid=s%3A${token}; b=2`,
+    },
+  });
+  const data = (result.data as { parameters: { multiPair: string } }).parameters;
+  const serialized = JSON.stringify(result);
+  assert.equal(result.redacted, true);
+  assert.equal(serialized.includes(token), false);
+  assert.match(data.multiPair, /connect\.sid=\[REDACTED\]/);
+  assert.match(data.multiPair, /^a=1;/);
+  assert.match(data.multiPair, /b=2$/);
+});
+
+test("suffixed secret keys are redacted while lookalike prose words survive", () => {
+  const secret = "Tr0ub4dor";
+  const result = sanitizeForOutput({
+    parameters: {
+      numberedField: `user=bob&password2=${secret}&mode=x`,
+      numberField: `token1=${secret}`,
+      letterFieldA: `apiKeyB=${secret}`,
+      letterFieldB: `secretB=${secret}`,
+      proseA: "tokenizer=babel-loader",
+      proseB: "passwordless authentication is enabled",
+    },
+  });
+  const data = (
+    result.data as {
+      parameters: { numberedField: string; proseA: string; proseB: string };
+    }
+  ).parameters;
+  const serialized = JSON.stringify(result);
+  assert.equal(result.redacted, true);
+  assert.equal(serialized.includes(secret), false);
+  assert.match(data.numberedField, /user=bob/);
+  assert.match(data.numberedField, /password2=\[REDACTED\]/);
+  assert.match(data.numberedField, /mode=x$/);
+  assert.equal(data.proseA, "tokenizer=babel-loader");
+  assert.equal(data.proseB, "passwordless authentication is enabled");
+});
+
+test("quoted multi-word secrets are fully redacted while adjacent fields are preserved", () => {
+  const passphrase = "correct horse battery staple";
+  const result = sanitizeForOutput({
+    parameters: {
+      doubleQuoted: `password="${passphrase}"`,
+      singleQuoted: `passphrase='${passphrase}'`,
+      jsonEmbedded: `config: {"passphrase":"${passphrase}"}`,
+      adjacentUnquoted: "password=hunter2 user=bob role=admin",
+      adjacentQuoted: 'token="multi word secret"; keep=this',
+    },
+  });
+  const data = (
+    result.data as {
+      parameters: {
+        doubleQuoted: string;
+        singleQuoted: string;
+        adjacentUnquoted: string;
+        adjacentQuoted: string;
+      };
+    }
+  ).parameters;
+  const serialized = JSON.stringify(result);
+  assert.equal(result.redacted, true);
+  assert.equal(serialized.includes("horse battery staple"), false);
+  assert.equal(serialized.includes("battery"), false);
+  assert.equal(serialized.includes("multi word secret"), false);
+  assert.equal(data.doubleQuoted, "password=[REDACTED]");
+  assert.equal(data.singleQuoted, "passphrase=[REDACTED]");
+  assert.match(data.adjacentUnquoted, /user=bob/);
+  assert.match(data.adjacentUnquoted, /role=admin$/);
+  assert.match(data.adjacentQuoted, /keep=this$/);
+});
+
+test("secrets whose value opens an unterminated quote are still redacted", () => {
+  const secret = "s3cr3tvalue";
+  const result = sanitizeForOutput({
+    parameters: {
+      truncatedDouble: `password="${secret}`,
+      truncatedSingle: `token='${secret}`,
+      truncatedJson: `{"password":"${secret}`,
+      multiWordTruncated: `passphrase="${secret} more words`,
+      adjacentPreserved: `password="a" other="keepme"`,
+    },
+  });
+  const data = (result.data as { parameters: { adjacentPreserved: string } }).parameters;
+  const serialized = JSON.stringify(result);
+  assert.equal(result.redacted, true);
+  assert.equal(serialized.includes(secret), false);
+  assert.match(data.adjacentPreserved, /other="keepme"$/);
+});
+
+test("secrets whose quoted value embeds an escaped quote are redacted in full", () => {
+  const secret = "abc-inner-secret-def";
+  const result = sanitizeForOutput({
+    parameters: {
+      // As it appears after JSON.stringify, an inner quote is backslash-escaped.
+      escapedInner: `authorization:"${secret}\\"trailing"`,
+      adjacentPreserved: `token="a\\"b" other="keepme"`,
+    },
+  });
+  const data = (result.data as { parameters: { adjacentPreserved: string } }).parameters;
+  const serialized = JSON.stringify(result);
+  assert.equal(result.redacted, true);
+  assert.equal(serialized.includes(secret), false);
+  assert.equal(serialized.includes("trailing"), false);
+  assert.match(data.adjacentPreserved, /other="keepme"$/);
+});
+
+test("URL userinfo redaction stays linear on long scheme-class strings", () => {
+  // A long run of scheme-class characters with no "://" must not trigger quadratic
+  // backtracking: sanitizing a 128 KiB hex string must complete well under a second.
+  const hex = "deadbeef".repeat(16_384);
+  const start = process.hrtime.bigint();
+  const result = sanitizeForOutput({ parameters: { blob: hex } });
+  const elapsedMs = Number(process.hrtime.bigint() - start) / 1e6;
+  assert.equal(result.untrusted, true);
+  assert.ok(
+    elapsedMs < 500,
+    `sanitizeForOutput took ${elapsedMs.toFixed(1)}ms on a 128 KiB scheme-class string`,
+  );
+});
+
 test("safe JSON traversal rejects excessive breadth before enqueuing child values", () => {
   const wide = new Array<unknown>(20_000);
   let lastChildRead = false;

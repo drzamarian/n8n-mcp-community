@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstat, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import os from "node:os";
@@ -7,7 +6,11 @@ import process from "node:process";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { verifyArtifactReviewForPackageState } from "./artifact-review.mjs";
-import { EXPECTED_MCPB_PLATFORMS } from "./release-metadata-policy.mjs";
+import {
+  assertMcpbBaselineFileCounts,
+  EXPECTED_MCPB_PLATFORMS,
+} from "./release-metadata-policy.mjs";
+import { resolveNodeEntrypoint, runPortableCommandSync } from "./portable-cli.mjs";
 
 const root = process.cwd();
 const sourceDist = path.join(root, "dist");
@@ -19,7 +22,10 @@ await verifyArtifactReviewForPackageState(root, packageJson.private);
 const bundle = path.join(sourceDist, `n8n-mcp-community-${packageJson.version}.mcpb`);
 const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "n8n-mcp-community-verify-"));
 const unpacked = path.join(temporaryRoot, "bundle");
-const mcpb = path.join(root, "node_modules", ".bin", "mcpb");
+const mcpbCli = resolveNodeEntrypoint(
+  path.join(root, "node_modules", "@anthropic-ai", "mcpb", "dist", "cli", "cli.js"),
+  "MCPB",
+);
 const allowedLicenses = new Set([
   "Apache-2.0",
   "BSD-2-Clause",
@@ -31,11 +37,16 @@ const allowedLicenses = new Set([
 const noticeFile = /^(?:licen[cs]e|copying|notice)(?:[._-].*)?$/i;
 
 function run(command, args) {
-  const result = spawnSync(command, args, { cwd: root, encoding: "utf8" });
-  if (result.status !== 0) {
-    throw new Error(`${command} ${args.join(" ")} failed: ${result.stderr.trim()}`);
-  }
-  return result.stdout.trim();
+  return runPortableCommandSync(command, args, {
+    cwd: root,
+    label: "An MCPB verification subprocess",
+    maxBuffer: 16 * 1024 * 1024,
+    timeout: 120_000,
+  });
+}
+
+function runMcpb(args) {
+  return run(mcpbCli.command, [...mcpbCli.argumentPrefix, ...args]);
 }
 
 async function filesUnder(directory, prefix = "") {
@@ -64,9 +75,9 @@ try {
   if (!reproducible) {
     throw new Error("Two consecutive MCPB builds were not byte-identical.");
   }
-  run(mcpb, ["info", bundle]);
-  run(mcpb, ["unpack", bundle, unpacked]);
-  run(mcpb, ["validate", path.join(unpacked, "manifest.json")]);
+  runMcpb(["info", bundle]);
+  runMcpb(["unpack", bundle, unpacked]);
+  runMcpb(["validate", path.join(unpacked, "manifest.json")]);
 
   const manifest = JSON.parse(await readFile(path.join(unpacked, "manifest.json"), "utf8"));
   if (
@@ -114,6 +125,18 @@ try {
   ) {
     throw new Error("MCPB artifact differs from the exact reviewed manifest and digest.");
   }
+  // Recompute and bind the dependency file count (files under server/node_modules/)
+  // that the generator records but nothing else verifies, and prove the runtime,
+  // dependency, and other-project categories partition the total exactly.
+  const runtimeProjectFiles = projectFiles.filter((file) => file.startsWith("server/dist/"));
+  const otherProjectFiles = projectFiles.filter((file) => !file.startsWith("server/dist/"));
+  const dependencyFileCount = allBundleFiles.length - projectFiles.length;
+  assertMcpbBaselineFileCounts(artifactBaseline.mcpb, {
+    totalFileCount: allBundleFiles.length,
+    dependencyFileCount,
+    runtimeFileCount: runtimeProjectFiles.length,
+    otherProjectFileCount: otherProjectFiles.length,
+  });
   const forbidden = projectFiles.filter((file) =>
     /(?:^|\/)(?:src|test|sdds|\.audit)(?:\/|$)|(?:^|\/)\.env(?:\.|$)|(?:AGENTS|MEMORY|SOUL|ARCHITECT)\.md$/i.test(
       file,
@@ -178,6 +201,7 @@ try {
       {
         ...inventory,
         runtimeFiles: sourceFiles.length,
+        dependencyFiles: dependencyFileCount,
         bundledPackagePaths: packageManifests.length,
         forbiddenFiles: forbidden.length,
         sha256: artifactHash,

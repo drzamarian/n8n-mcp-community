@@ -12,7 +12,10 @@ export const TOOL_ENDPOINT_CONTRACTS: Readonly<Record<string, readonly string[]>
   n8n_workflows_update_tags: ["PUT /workflows/{workflowId}/tags"],
   n8n_workflows_archive: ["POST /workflows/{workflowId}/archive"],
   n8n_workflows_unarchive: ["POST /workflows/{workflowId}/unarchive"],
-  n8n_workflows_diff: ["GET /workflows/{workflowId}/{versionId}", "GET /workflows/{workflowId}"],
+  n8n_workflows_diff: [
+    "GET /workflows/{workflowId}/{versionId}",
+    "GET /workflows/{workflowId}?excludePinnedData=true",
+  ],
   n8n_executions_list: ["GET /executions"],
   n8n_executions_get: ["GET /executions/{executionId}"],
   n8n_executions_delete: ["DELETE /executions/{executionId}"],
@@ -42,7 +45,7 @@ export const TOOL_ENDPOINT_CONTRACTS: Readonly<Record<string, readonly string[]>
   n8n_get_node_docs: [],
   n8n_list_node_types: ["GET /workflows?excludePinnedData=true"],
   n8n_introspect: [
-    "GET /workflows/{workflowId}",
+    "GET /workflows/{workflowId}?excludePinnedData=true",
     "GET /executions",
     "GET /executions/{executionId}?redactExecutionData=true",
   ],

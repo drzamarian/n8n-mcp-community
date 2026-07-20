@@ -167,7 +167,11 @@ export const executionTools: readonly ToolDefinition[] = Object.freeze([
     }),
     handler: async (input, context) => {
       const upstream = z
-        .object({ status: z.string().optional(), stoppedAt: z.string().nullable().optional() })
+        .object({
+          status: z.string().optional(),
+          finished: z.boolean().optional(),
+          stoppedAt: z.string().nullable().optional(),
+        })
         .passthrough()
         .parse(
           await context.client().request({
@@ -175,10 +179,26 @@ export const executionTools: readonly ToolDefinition[] = Object.freeze([
             path: `/executions/${pathSegment(input.executionId)}/stop`,
           }),
         );
+      // n8n answers 200 even when the execution already finished in the race between the
+      // operator's check and this call. Derive the outcome from the validated body instead of
+      // asserting a stop that never happened: only a "canceled" terminal state means we stopped
+      // it; other terminal states mean it finished on its own; anything else is unknown.
+      const normalizedStatus = upstream.status?.toLowerCase();
+      const outcome =
+        normalizedStatus === "canceled"
+          ? { stopped: true, state: "stopped" as const }
+          : normalizedStatus === "success" ||
+              normalizedStatus === "error" ||
+              normalizedStatus === "crashed" ||
+              upstream.finished === true
+            ? { stopped: false, state: "already_finished" as const }
+            : { stopped: false, state: "unknown" as const };
       return {
         executionId: input.executionId,
-        stopped: true,
+        stopped: outcome.stopped,
+        state: outcome.state,
         ...(upstream.status === undefined ? {} : { status: upstream.status }),
+        ...(upstream.finished === undefined ? {} : { finished: upstream.finished }),
         ...(upstream.stoppedAt === undefined ? {} : { stoppedAt: upstream.stoppedAt }),
       };
     },

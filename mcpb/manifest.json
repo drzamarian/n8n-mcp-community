@@ -31,7 +31,7 @@
     "n8nApiUrl": {
       "type": "string",
       "title": "n8n API URL",
-      "description": "Absolute HTTPS base URL for the intended self-hosted n8n instance.",
+      "description": "Absolute HTTP(S) base URL for the intended self-hosted n8n instance; plaintext HTTP is limited to loopback unless explicitly allowed.",
       "required": true,
       "sensitive": true
     },

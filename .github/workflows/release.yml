@@ -96,7 +96,7 @@ jobs:
           test "${#bundles[@]}" -eq 1
           cp "${bundles[0]}" release-artifacts/
           cp server.json release-artifacts/server.json
-          npm run sbom > release-artifacts/sbom.cdx.json
+          npm run --silent sbom > release-artifacts/sbom.cdx.json
           (
             cd release-artifacts
             sha256sum ./*.tgz ./*.mcpb ./server.json ./sbom.cdx.json \
@@ -126,6 +126,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
+          persist-credentials: false
       - name: Set up Node.js for trusted publishing
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
@@ -166,6 +167,7 @@ jobs:
           mapfile -t packages < <(find release-artifacts -maxdepth 1 -type f -name '*.tgz' -print)
           test "${#packages[@]}" -eq 1
           test "$(sha256sum "${packages[0]}" | cut -d ' ' -f 1)" = "${APPROVED_NPM_TARBALL_SHA256}"
+          node scripts/verify-release-artifacts.mjs release-artifacts
       - name: Download Walter's externally signed MCPB from the draft release
         shell: bash
         env:

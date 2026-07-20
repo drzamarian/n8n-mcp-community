@@ -3,6 +3,34 @@ const VERSION_IDENTIFIER = /^[0-9A-Za-z-]+$/;
 
 export const EXPECTED_MCPB_PLATFORMS = Object.freeze(["linux", "darwin", "win32"]);
 
+/**
+ * Binds the recorded MCPB dependency file count to the recomputed bundle and
+ * enforces that the runtime, dependency, and other-project categories partition
+ * the total exactly. Fails closed on any drift or tamper.
+ *
+ * @param {{ totalFileCount: number, dependencyFileCount: number }} baselineMcpb
+ * @param {{ totalFileCount: number, dependencyFileCount: number, runtimeFileCount: number, otherProjectFileCount: number }} actual
+ */
+export function assertMcpbBaselineFileCounts(baselineMcpb, actual) {
+  for (const [name, value] of Object.entries(actual)) {
+    if (!Number.isInteger(value) || value < 0) {
+      throw new Error(`Recomputed MCPB ${name} must be a non-negative integer.`);
+    }
+  }
+  const { totalFileCount, dependencyFileCount, runtimeFileCount, otherProjectFileCount } = actual;
+  if (totalFileCount !== runtimeFileCount + dependencyFileCount + otherProjectFileCount) {
+    throw new Error("MCPB runtime, dependency, and project file counts do not sum to the total.");
+  }
+  if (
+    !baselineMcpb ||
+    typeof baselineMcpb !== "object" ||
+    baselineMcpb.totalFileCount !== totalFileCount ||
+    baselineMcpb.dependencyFileCount !== dependencyFileCount
+  ) {
+    throw new Error("MCPB file counts differ from the reviewed baseline.");
+  }
+}
+
 function identifiersAreValid(value, forbidLeadingZeroNumeric = false) {
   if (value === undefined) return true;
   const identifiers = value.split(".");

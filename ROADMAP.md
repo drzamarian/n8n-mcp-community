@@ -12,7 +12,7 @@ maintainer approval.
   2.30.7 using synthetic data and no production credentials.
 - Inspect clean npm and MCPB artifacts, SBOMs, checksums, signatures, and
   dependency notices.
-- Pass independent Opus and GLM implementation audits with no actionable
+- Pass two independent adversarial implementation audits with zero actionable
   findings.
 - Enable repository security controls before the first public release.
 

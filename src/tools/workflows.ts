@@ -1,11 +1,14 @@
 import { z } from "zod";
+import { N8nApiError, type N8nClient } from "../n8n/client.js";
 import { defineTool, type ToolDefinition } from "./definition.js";
 import {
+  assertBoundedDepth,
   assertSafeJson,
   confirmation,
   cursor,
   identifier,
   isRecord,
+  MUTABLE_NODE_ROOTS,
   pageLimit,
   pathSegment,
   requiredSafeJsonValue,
@@ -14,6 +17,19 @@ import {
   validateDotPath,
 } from "./schemas.js";
 import { booleanQuery, numberQuery, projectMetadata } from "./common.js";
+
+// Trusted server-returned workflow data is carried through unchanged (large or prototype-named
+// pinned data must survive), but it still recurses through structuredClone and canonicalization,
+// so bound its depth well above any real workflow yet far below the native stack limit.
+const MAX_WORKFLOW_JSON_DEPTH = 256;
+
+const DEFAULT_FALSE_NODE_FIELDS = new Set<string>([
+  "retryOnFail",
+  "continueOnFail",
+  "notesInFlow",
+  "alwaysOutputData",
+  "executeOnce",
+]);
 
 const nodeSchema = z
   .object({
@@ -107,8 +123,79 @@ type Workflow = z.output<typeof workflowSchema>;
 type DiffSnapshot = z.output<typeof historicalWorkflowSchema>;
 type WorkflowNode = Workflow["nodes"][number];
 type WorkflowConnections = z.output<typeof connectionsSchema>;
+type MutableNodeRoot = (typeof MUTABLE_NODE_ROOTS)[number];
+
+class WorkflowContractError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = "WorkflowContractError";
+    this.code = code;
+  }
+}
+
+// Per-root type contract for the single value applied by n8n_update_node. Keys mirror
+// MUTABLE_NODE_ROOTS exactly; every allowed root is bounded so a corrupt value (a string
+// for a boolean, a non-integer retry count, an unknown onError enum) is rejected before PUT.
+const NODE_ROOT_VALUE_CONTRACTS: Readonly<Record<MutableNodeRoot, z.ZodTypeAny>> = {
+  parameters: z.record(z.unknown()),
+  position: z.tuple([z.number().finite(), z.number().finite()]),
+  disabled: z.boolean(),
+  retryOnFail: z.boolean(),
+  maxTries: z.number().int().min(0).max(10_000),
+  waitBetweenTries: z.number().int().min(0).max(300_000),
+  continueOnFail: z.boolean(),
+  onError: z.enum(["continueErrorOutput", "continueRegularOutput", "stopWorkflow"]),
+  notes: z.string().max(16_384),
+  notesInFlow: z.boolean(),
+  alwaysOutputData: z.boolean(),
+  executeOnce: z.boolean(),
+};
+
+function isMutableNodeRoot(segment: string): segment is MutableNodeRoot {
+  return (MUTABLE_NODE_ROOTS as readonly string[]).includes(segment);
+}
+
+function assertMutatedNodeValid(node: WorkflowNode, root: MutableNodeRoot): void {
+  const record = node as unknown as Record<string, unknown>;
+  if (!NODE_ROOT_VALUE_CONTRACTS[root].safeParse(record[root]).success) {
+    throw new Error(
+      `The node update value does not satisfy the type contract for the '${root}' node field.`,
+    );
+  }
+  // Local invariant on the node this tool just mutated; surface a plain tool error rather than a
+  // raw ZodError so it is never misreported as an upstream response-shape mismatch.
+  if (!nodeSchema.safeParse(node).success) {
+    throw new Error("The mutated node no longer satisfies the node schema; no update was sent.");
+  }
+}
+
+function assertWorkflowVersionIdentitySupported(workflow: Workflow, operationName: string): void {
+  if (workflow.versionId === undefined) {
+    throw new WorkflowContractError(
+      "version_identity_unsupported",
+      `This n8n instance did not return a workflow versionId, so the optimistic-concurrency precondition required by ${operationName} cannot be enforced. This is characteristic of an n8n release below the supported Community 2.30.5 floor; it is not a concurrent modification. No update was sent.`,
+    );
+  }
+}
+
+async function fetchWorkflowVersion(client: N8nClient, path: string): Promise<unknown> {
+  try {
+    return await client.request({ path });
+  } catch (error) {
+    if (error instanceof N8nApiError && error.status === 404) {
+      throw new WorkflowContractError(
+        "version_history_unavailable",
+        "n8n returned HTTP 404 for the workflow version-history endpoint. This server cannot determine which of two distinct causes applies: the endpoint requires the supported floor (n8n Community 2.30.5 or newer) and may be absent on an older instance, or the requested version was pruned or never retained under this instance's history retention. Confirm the running n8n version before treating this as a retention limit.",
+      );
+    }
+    throw error;
+  }
+}
 
 function writableWorkflow(workflow: Workflow): Record<string, unknown> {
+  assertBoundedDepth(workflow, MAX_WORKFLOW_JSON_DEPTH);
   const output: Record<string, unknown> = {
     name: workflow.name,
     nodes: structuredClone(workflow.nodes),
@@ -152,12 +239,17 @@ function workflowForOutput(
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
   if (!isRecord(value)) return value;
-  const output: Record<string, unknown> = {};
+  // Use a null-prototype object so a literal "__proto__" data key becomes an own property
+  // instead of invoking the prototype setter (which would silently drop it from the canonical
+  // form and blind the post-write preservation comparisons). JSON.stringify still serializes it.
+  const output = Object.create(null) as Record<string, unknown>;
   for (const key of Object.keys(value).sort()) output[key] = canonicalize(value[key]);
   return output;
 }
 
 function equivalent(left: unknown, right: unknown): boolean {
+  assertBoundedDepth(left, MAX_WORKFLOW_JSON_DEPTH);
+  assertBoundedDepth(right, MAX_WORKFLOW_JSON_DEPTH);
   return JSON.stringify(canonicalize(left)) === JSON.stringify(canonicalize(right));
 }
 
@@ -230,9 +322,15 @@ function assertSensitiveWorkflowDataPreserved(
   after: Workflow,
   operationName: string,
 ): void {
+  // n8n's PUT response may report absent pinned or static data as `null` even when the
+  // pre-write GET omitted it (`undefined`). Both mean "no data", so normalize the nullish
+  // pair before comparing; a genuine change (no-data -> data, or data -> different data)
+  // still fails closed.
+  const normalizeNullish = (value: unknown): unknown =>
+    value === undefined || value === null ? null : value;
   if (
-    !equivalent(expectedPinData, after.pinData) ||
-    !equivalent(expectedStaticData, after.staticData)
+    !equivalent(normalizeNullish(expectedPinData), normalizeNullish(after.pinData)) ||
+    !equivalent(normalizeNullish(expectedStaticData), normalizeNullish(after.staticData))
   ) {
     throw new Error(
       `n8n did not preserve pinned or static workflow data in its response to ${operationName}. The workflow update may already have been applied and must be inspected immediately.`,
@@ -345,8 +443,20 @@ function computeWorkflowDiff(
     if (!equivalent(before.credentials ?? {}, after.credentials ?? {})) {
       fields.push("credentialReferences");
     }
-    if (before.disabled !== after.disabled) fields.push("disabled");
+    if ((before.disabled ?? false) !== (after.disabled ?? false)) fields.push("disabled");
     if (!ignoreLayout && !equivalent(before.position, after.position)) fields.push("position");
+    const beforeRecord = before as unknown as Record<string, unknown>;
+    const afterRecord = after as unknown as Record<string, unknown>;
+    for (const field of MUTABLE_NODE_ROOTS) {
+      if (field === "parameters" || field === "position" || field === "disabled") continue;
+      const beforeValue = beforeRecord[field];
+      const afterValue = afterRecord[field];
+      const bothSemanticallyFalse =
+        DEFAULT_FALSE_NODE_FIELDS.has(field) &&
+        (beforeValue === undefined || beforeValue === false) &&
+        (afterValue === undefined || afterValue === false);
+      if (!bothSemanticallyFalse && !equivalent(beforeValue, afterValue)) fields.push(field);
+    }
     if (fields.length > 0) {
       modified += 1;
       changes.push({
@@ -525,10 +635,10 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
       );
       assertWorkflowIdentity(current, input.workflowId);
       assertUniqueWorkflowNodes(current.nodes);
+      assertWorkflowVersionIdentitySupported(current, "n8n_workflows_update");
       if (current.versionId !== input.expectedVersionId) {
         throw new Error("The workflow version changed before the workflow update began.");
       }
-      assertSafeJson(current);
       const immediatelyCurrent = workflowSchema.parse(
         await client.request({ path: `/workflows/${pathSegment(input.workflowId)}` }),
       );
@@ -537,7 +647,6 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
       if (immediatelyCurrent.versionId !== input.expectedVersionId) {
         throw new Error("The workflow changed before the non-atomic update could be sent.");
       }
-      assertSafeJson(immediatelyCurrent);
       const body = writableWorkflow(immediatelyCurrent);
       for (const key of [
         "name",
@@ -555,7 +664,6 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
       const bodyConnections = connectionsSchema.parse(body.connections);
       assertUniqueWorkflowNodes(bodyNodes);
       assertWorkflowGraphConsistent(bodyNodes, bodyConnections);
-      assertSafeJson(body);
       const updated = workflowSchema.parse(
         await client.request({
           method: "PUT",
@@ -594,6 +702,10 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
     },
     handler: async (input, context) => {
       const segments = validateDotPath(input.path);
+      const root = segments[0];
+      if (root === undefined || !isMutableNodeRoot(root)) {
+        throw new Error("The update path targets an immutable or unsupported node field.");
+      }
       assertSafeJson(input.value);
       const client = context.client();
       const current = workflowSchema.parse(
@@ -601,7 +713,7 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
       );
       assertWorkflowIdentity(current, input.workflowId);
       assertUniqueWorkflowNodes(current.nodes);
-      assertSafeJson(current);
+      assertWorkflowVersionIdentitySupported(current, "n8n_update_node");
       if (current.versionId !== input.expectedVersionId) {
         throw new Error("The workflow version changed before the node update began.");
       }
@@ -615,15 +727,14 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
       if (immediatelyCurrent.versionId !== input.expectedVersionId) {
         throw new Error("The workflow changed before the non-atomic update could be sent.");
       }
-      assertSafeJson(immediatelyCurrent);
       assertWorkflowGraphConsistent(immediatelyCurrent.nodes, immediatelyCurrent.connections);
       const body = writableWorkflow(immediatelyCurrent);
       const bodyNodes = z.array(nodeSchema).parse(body.nodes);
       const target = requireUniqueNode(bodyNodes, input.nodeId);
       setUnknownPath(target, segments, structuredClone(input.value));
+      assertMutatedNodeValid(target, root);
       body.nodes = bodyNodes;
       assertWorkflowGraphConsistent(bodyNodes, connectionsSchema.parse(body.connections));
-      assertSafeJson(body);
       const updated = workflowSchema.parse(
         await client.request({
           method: "PUT",
@@ -705,9 +816,10 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
     input: { workflowId: identifier, versionId: identifier },
     handler: async (input, context) => {
       const historical = historicalWorkflowSchema.parse(
-        await context.client().request({
-          path: `/workflows/${pathSegment(input.workflowId)}/${pathSegment(input.versionId)}`,
-        }),
+        await fetchWorkflowVersion(
+          context.client(),
+          `/workflows/${pathSegment(input.workflowId)}/${pathSegment(input.versionId)}`,
+        ),
       );
       assertHistoricalWorkflowIdentity(historical, input.workflowId, input.versionId);
       return historicalWorkflowForOutput(historical);
@@ -783,23 +895,28 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
       }
       const client = context.client();
       const from = diffSnapshot(
-        await client.request({
-          path: `/workflows/${pathSegment(input.workflowId)}/${pathSegment(input.fromVersionId)}`,
-        }),
+        await fetchWorkflowVersion(
+          client,
+          `/workflows/${pathSegment(input.workflowId)}/${pathSegment(input.fromVersionId)}`,
+        ),
       );
       assertHistoricalWorkflowIdentity(from, input.workflowId, input.fromVersionId);
       let to: DiffSnapshot;
       if (input.toVersionId) {
         to = diffSnapshot(
-          await client.request({
-            path: `/workflows/${pathSegment(input.workflowId)}/${pathSegment(input.toVersionId)}`,
-          }),
+          await fetchWorkflowVersion(
+            client,
+            `/workflows/${pathSegment(input.workflowId)}/${pathSegment(input.toVersionId)}`,
+          ),
         );
         assertHistoricalWorkflowIdentity(to, input.workflowId, input.toVersionId);
       } else {
         to = asHistoricalCurrent(
           workflowSchema.parse(
-            await client.request({ path: `/workflows/${pathSegment(input.workflowId)}` }),
+            await client.request({
+              path: `/workflows/${pathSegment(input.workflowId)}`,
+              query: { excludePinnedData: booleanQuery(true) },
+            }),
           ),
         );
       }

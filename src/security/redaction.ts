@@ -27,7 +27,7 @@ const MANDATORY_VALUE_REDACTIONS: ReadonlyArray<[RegExp, string]> = [
   [/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]"],
   [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g, "[JWT]"],
   [
-    /\b((?:[A-Za-z][A-Za-z0-9_.-]{0,63})?(?:api[-_ ]?key|token|secret|password|passphrase|passwd|pwd|authorization|credential|signature|client[-_ ]?secret|private[-_ ]?key))["']?\s*[:=]\s*["']?[^"'?,;&}\s]+/gi,
+    /\b((?:[A-Za-z][A-Za-z0-9_.-]{0,63})?(?:api[-_ ]?key|token|secret|passphrase|password|passwd|pwd|authorization|credential|signature|client[-_ ]?secret|private[-_ ]?key|connect\.sid|cookie|session[-_ ]?id|session[-_ ]?token|session[-_ ]?key|session)(?:[0-9]+|[A-Za-z])?)["']?\s*[:=]\s*(?:"[^"\\\r\n]*(?:\\.[^"\\\r\n]*)*"?|'[^'\\\r\n]*(?:\\.[^'\\\r\n]*)*'?|[^"'?,;&}\s]+)/gi,
     "$1=[REDACTED]",
   ],
 ];
@@ -83,6 +83,17 @@ function redactBasicCredential(value: string): string {
   );
 }
 
+function redactUrlCredential(value: string): string {
+  // Redact userinfo credentials embedded in URLs (scheme://user:password@host) for
+  // any host shape (dotted, single-label such as localhost, IPv4, bracketed IPv6)
+  // and percent-encoded credentials, without touching URLs that carry no userinfo.
+  // The userinfo class excludes only the host/path/query delimiters, so it spans to
+  // the LAST "@" before the host; this fully redacts passwords that contain a literal
+  // "@" (e.g. mongodb://user:p@ss@host) instead of leaking the suffix. The scheme
+  // quantifier is bounded so a long delimiter-free run cannot force quadratic backtracking.
+  return value.replace(/([A-Za-z][A-Za-z0-9+.-]{0,31}:\/\/)[^/?#\s]+@/g, "$1[REDACTED]@");
+}
+
 function sanitizeString(
   value: string,
   structuralKey?: string,
@@ -108,6 +119,9 @@ function sanitizeString(
   const withoutBasicCredential = redactBasicCredential(output);
   redacted ||= withoutBasicCredential !== output;
   output = withoutBasicCredential;
+  const withoutUrlCredential = redactUrlCredential(output);
+  redacted ||= withoutUrlCredential !== output;
+  output = withoutUrlCredential;
   const validatedInternalValueIsSafe =
     (structuralKey === "fingerprint" && SAFE_ERROR_FINGERPRINT_VALUE.test(output)) ||
     (structuralKey === "id" && SAFE_LITERAL_SECRET_FINDING_ID_VALUE.test(output)) ||

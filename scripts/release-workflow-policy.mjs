@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { parseAllDocuments, stringify } from "yaml";
 
 const EXPECTED_RELEASE_SEMANTIC_SHA256 =
-  "6559612ee08f5885ed125c96a7b8d0b43cd22282e3d1f791281dd176c8494263";
+  "7bfa263d03b420f6fae55ae4c45b88387440144f6d184537ddfafa46a80ac1af";
 
 function fail(message) {
   throw new Error(message);
@@ -88,6 +88,7 @@ const APPROVAL_RUN = Object.freeze([
   "mapfile -t packages < <(find release-artifacts -maxdepth 1 -type f -name '*.tgz' -print)",
   'test "${#packages[@]}" -eq 1',
   'test "$(sha256sum "${packages[0]}" | cut -d \' \' -f 1)" = "${APPROVED_NPM_TARBALL_SHA256}"',
+  "node scripts/verify-release-artifacts.mjs release-artifacts",
 ]);
 
 const SIGNED_VERIFIER_RUN = Object.freeze([

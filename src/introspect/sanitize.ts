@@ -4,6 +4,19 @@ import { IntrospectResultSchema, type Finding, type IntrospectResult } from "./c
 
 const SAFE_FINDING_ENTITY_KEY = /^[A-Za-z0-9_-]{1,128}$/;
 
+// A sanitize-stage schema mismatch is a LOCAL output invariant, never upstream n8n
+// response-shape drift, so it must carry the "invalid_output" code the engine uses.
+// Importing IntrospectOutputError from ./engine.js would create a circular import
+// (engine.ts -> collector.ts -> sanitize.ts), so mirror its shape locally instead.
+class IntrospectOutputError extends Error {
+  readonly code = "invalid_output";
+
+  constructor(message = "The Introspect result could not be represented safely.") {
+    super(message);
+    this.name = "IntrospectOutputError";
+  }
+}
+
 export function safeEntityKey(input: string): string {
   const normalized = input.replace(/[^A-Za-z0-9_-]/g, "_");
   if (normalized.length <= 128) return normalized || "unknown";
@@ -19,14 +32,18 @@ function hasConsistentFindingIdentity(finding: Finding): boolean {
 }
 
 export function sanitizeIntrospectResultForOutput(result: IntrospectResult): IntrospectResult {
-  const sanitized = IntrospectResultSchema.parse(sanitizeForOutput(result).data);
+  const initial = IntrospectResultSchema.safeParse(sanitizeForOutput(result).data);
+  if (!initial.success) throw new IntrospectOutputError();
+  const sanitized = initial.data;
   for (const [index, source] of result.findings.entries()) {
     const target = sanitized.findings[index];
     if (target === undefined || !hasConsistentFindingIdentity(source)) continue;
     target.affectedEntity.key = source.affectedEntity.key;
     target.id = `${target.ruleId}:${safeEntityKey(source.affectedEntity.key)}`;
   }
-  return IntrospectResultSchema.parse(sanitized);
+  const finalResult = IntrospectResultSchema.safeParse(sanitized);
+  if (!finalResult.success) throw new IntrospectOutputError();
+  return finalResult.data;
 }
 
 export function fingerprintError(error: unknown, nodeRef?: string): string | undefined {

@@ -17,7 +17,11 @@ result envelope in abbreviated form.
 - **Output:** every successful generic value is sanitized and wrapped as
   `{ "data": ..., "redacted": boolean, "untrusted": true }`; text and
   structured MCP content carry the same value. The final serialized result is
-  limited to 256 KiB. `n8n_introspect` applies the shared sanitizer and returns
+  limited to 256 KiB. When a successful write or unsafe operation produces a
+  result above that cap, the tool reports a truncated success summary
+  (`truncated: true`, `outcome: "success"`, and bounded identity fields)
+  instead of an error, because the mutation has already been applied;
+  read-only tools keep the over-cap error. `n8n_introspect` applies the shared sanitizer and returns
   its declared diagnostic schema directly, with one concise summary block and
   one exact JSON fallback; its dedicated reducer and combined-output budget are
   documented below.
@@ -141,10 +145,18 @@ workflow-level writable data.
   1,000, and position paths other than `position.0` or `position.1` are rejected.
 - **Returns:** workflow/version/node/path metadata, `updated: true`,
   `atomic: false`, and an explicit residual-risk statement.
-- **Failures and privacy:** a missing node, version mismatch, or unsafe path
-  fails before the PUT. Duplicate target IDs fail instead of selecting one
-  ambiguously. The PUT response must contain exactly one target node with the
-  requested value. n8n has no atomic compare-and-swap, so a small
+- **Failures and privacy:** a missing node, version mismatch, unsafe path, or a
+  value that violates the targeted field's type contract fails before the PUT.
+  Each root is bounded: booleans for `disabled` and the retry/error/output flags,
+  a two-number tuple for `position`, non-negative integers for `maxTries` and
+  `waitBetweenTries`, a bounded string for `notes`, the known n8n enum for
+  `onError`, and safe JSON for `parameters`; the complete mutated node is
+  re-validated against the node schema before any request. An instance that omits
+  workflow `versionId` fails at the pre-write read with a
+  `version_identity_unsupported` error naming the below-floor cause rather than a
+  false concurrent-change diagnosis. Duplicate target IDs fail instead of
+  selecting one ambiguously. The PUT response must contain exactly one target
+  node with the requested value. n8n has no atomic compare-and-swap, so a small
   time-of-check/time-of-use window remains. A pin/static mismatch is detectable
   only in the response after the PUT; the server returns an error that says the
   workflow may already have changed and must be inspected immediately. It
@@ -218,9 +230,13 @@ Retrieves one retained historical workflow snapshot.
 - **Returns:** validated historical workflow ID/version, optional name, nodes,
   and connections. The historical API does not expose settings, pin data, or
   static data.
-- **Failures and privacy:** malformed selectors fail locally; unavailable or
-  removed history returns a sanitized upstream error. Historical node parameters
-  can contain sensitive content and remain untrusted.
+- **Failures and privacy:** malformed selectors fail locally. A 404 from the
+  version-history endpoint returns a stable `version_history_unavailable` error
+  that states both possible causes without asserting which one applies: the
+  endpoint requires the supported floor (n8n Community 2.30.5 or newer) and may
+  be absent below it, or the requested version was pruned or never retained under
+  history retention. Historical node parameters can contain sensitive content and
+  remain untrusted.
 - **Example:** `{ "workflowId": "wf_1", "versionId": "v6" }` →
   `{ "data": { "workflowId": "wf_1", "versionId": "v6", "nodes": [], "connections": {} }, "redacted": false, "untrusted": true }`.
 
@@ -299,7 +315,9 @@ version and either another retained version or the current workflow.
 
 - **Policy and endpoint:** read-only; at most two GETs to
   `GET /workflows/{workflowId}/{versionId}` and optionally
-  `GET /workflows/{workflowId}`; `RO=true, D=false, I=true, OW=true`.
+  `GET /workflows/{workflowId}?excludePinnedData=true`;
+  `RO=true, D=false, I=true, OW=true`. The current-workflow read for a
+  diff-to-current excludes pinned data, which the comparison never inspects.
 - **Requirements:** Requires API-key permission to read the current workflow and retained versions; comparison itself is local and read-only.
 - **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Missing/pruned history is a capability limitation, and historical settings/pin/static data are never fabricated.
 - **Inputs:** required `workflowId` and `fromVersionId`; optional
@@ -307,13 +325,21 @@ version and either another retained version or the current workflow.
   Two explicit selectors must differ.
 - **Returns:** counts and up to 200 ordered changes for workflow-name changes,
   node add/remove/modify, and connections. Modified-node output names changed
-  fields, not their values. Coverage reports whether the name was available in
+  fields, not their values. Absent and explicit `false` are treated as the same
+  value for default-false execution flags. Numeric retry settings remain
+  conservative: omitted versus explicit `maxTries` or `waitBetweenTries` is
+  reported because the Public API does not publish a version-stable default.
+  Coverage reports whether the name was available in
   both snapshots and explicitly marks description, settings, pin data, static
   data, and node groups as unavailable from the historical API.
 - **Failures and privacy:** snapshots with missing/duplicate stable node IDs,
-  mismatched workflow IDs, unsafe size, or invalid selectors fail safely. No raw
-  parameters, expressions, code, URLs, headers, credentials, or snapshot hash is
-  returned.
+  mismatched workflow IDs, unsafe size, or invalid selectors fail safely. A 404
+  from a version-history read returns a stable `version_history_unavailable`
+  error that states both possible causes without asserting which one applies:
+  the endpoint requires the supported floor (n8n Community 2.30.5 or newer) and
+  may be absent below it, or the requested version was pruned or never retained
+  under history retention. No raw parameters, expressions, code, URLs, headers,
+  credentials, or snapshot hash is returned.
 - **Example:** `{ "workflowId": "wf_1", "fromVersionId": "v6" }` →
   `{ "data": { "summary": { "nodesModified": 1 }, "changes": [{ "kind": "node_modified", "nodeId": "node_1", "fields": ["parameters"] }], "comparisonCoverage": { "settings": "unavailable_historical_api" } }, "redacted": false, "untrusted": true }`.
 
@@ -399,8 +425,12 @@ Stops one currently running execution.
 - **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Only currently stoppable executions succeed; completed external effects are not rolled back.
 - **Inputs:** required `executionId`; `confirmation` must equal
   `STOP <executionId>`.
-- **Returns:** the validated input ID, `stopped: true`, and allowlisted upstream
-  status/timestamp when present. Identity never depends on the upstream body.
+- **Returns:** the validated input ID, a `stopped` boolean derived from the
+  validated upstream `status`/`finished` body fields (n8n answers HTTP 200 even
+  for executions that already finished, so HTTP success alone never asserts a
+  stop), a `state` of `stopped`, `already_finished`, or `unknown`, passthrough
+  `finished` when present, and allowlisted upstream status/timestamp when
+  present. Identity never depends on the upstream body.
 - **Failures and privacy:** denied mode/confirmation issues zero requests. n8n
   may reject a terminal, missing, or non-stoppable execution; stopping may leave
   external side effects already performed by earlier nodes.
@@ -530,7 +560,9 @@ Tests one stored credential through n8n.
 - **Inputs:** required `credentialId`; `confirmation` must equal
   `TEST <credentialId>`.
 - **Returns:** the input ID plus an allowlisted status and optional bounded
-  message.
+  message. Over-long upstream status or message text is truncated to the
+  bounded caps (64 and 512 characters) with `truncated: true` rather than
+  rejected, so the completed test outcome is always preserved.
 - **Failures and privacy:** this call may contact the credential's external
   service and cause observable authentication traffic. Denied mode or
   confirmation issues zero requests; returned messages are sanitized.
@@ -545,12 +577,13 @@ Finds exact references to one credential ID in one bounded workflow-list page.
   `GET /workflows?excludePinnedData=true` page;
   `RO=true, D=false, I=true, OW=true`.
 - **Requirements:** Requires workflow-list permission only; it deliberately does not request the credential record or credential-read permission.
-- **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Coverage is page-bounded and fails explicitly if workflow credential references are unavailable.
+- **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Coverage is page-bounded. Name-only, `id: null`, and legacy-string credential references are tolerated: they are skipped for ID matching and counted as unresolved instead of aborting the scan.
 - **Inputs:** required `credentialId`; optional `cursor`, `active`, and
   `limit?: 1..100` (default `50`).
 - **Returns:** examined count, exact matching workflow count, up to 200 total
-  node details with at most 20 per workflow, `nextCursor`, `scanComplete`, and
-  explicit truncation counts.
+  node details with at most 20 per workflow, `nextCursor`, `scanComplete`,
+  explicit truncation counts, and value-free coverage counts
+  `referencesScanned` and `referencesUnresolved`.
 - **Failures and privacy:** it never calls a credential endpoint or performs
   per-workflow fan-out. It returns workflow/node identity and type, never
   credential names, values, configuration, or workflow bodies. Continue with
@@ -689,12 +722,21 @@ Invites one non-owner user.
 - **Inputs:** required `email` (valid email up to 254);
   `role?: "global:member" | "global:admin"` defaults to `global:member`;
   `confirmation` must equal `INVITE <email>`.
-- **Returns:** `invited: true`, the email subject to shared redaction, and role.
+- **Returns:** the confirmed user ID and email; `userCreated: true`; the
+  requested role and whether n8n explicitly echoed that role in its response;
+  whether n8n sent the invitation email; `invited: true` only when email was
+  sent or n8n generated a manual acceptance link; and a bounded `delivery` status of
+  `email_sent`, `manual_link_available_in_n8n`, or `not_delivered`. The
+  capability-bearing acceptance URL is never returned through MCP.
 - **Failures and privacy:** this sends an invitation and may trigger external
-  email. Owner creation is not exposed. Denied mode/confirmation issues zero
-  requests; verify the address and least-privilege role before confirming.
+  email. Owner creation is not exposed. An empty, mismatched, or per-user error
+  response fails closed with retry guidance because n8n may already have
+  created a pending user. When manual delivery is required, retrieve the link
+  from a trusted n8n interface and deliver it out of band. Denied
+  mode/confirmation issues zero requests; verify the address and
+  least-privilege role before confirming.
 - **Example:** `{ "email": "member@example.test", "role": "global:member", "confirmation": "INVITE member@example.test" }` →
-  `{ "data": { "invited": true, "email": "[EMAIL]", "role": "global:member" }, "redacted": true, "untrusted": true }`.
+  `{ "data": { "userCreated": true, "invited": true, "userId": "user_2", "email": "[EMAIL]", "requestedRole": "global:member", "roleConfirmedByResponse": false, "emailSent": true, "delivery": "email_sent", "inviteAcceptUrlReturned": false }, "redacted": true, "untrusted": true }`.
 
 ## n8n_users_delete
 
@@ -842,8 +884,8 @@ and a bounded sample of its execution history. It diagnoses; it does not execute
 the workflow or call an AI agent.
 
 - **Policy and endpoint:** read-only local analysis over
-  `GET /workflows/{workflowId}`, bounded `GET /executions` pages, and, only in
-  deep mode, up to four selected
+  `GET /workflows/{workflowId}?excludePinnedData=true`, bounded `GET /executions`
+  pages, and, only in deep mode, up to four selected
   `GET /executions/{executionId}?redactExecutionData=true` reads;
   `RO=true, D=false, I=true, OW=true`.
 - **Requirements:** Requires permission to read the selected workflow and bounded execution metadata; the 23-rule analysis itself is local and read-only.

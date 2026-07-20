@@ -2,13 +2,14 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { resolveNpmCli } from "./portable-cli.mjs";
 
 const mode = process.argv[2];
 if (mode !== "full" && mode !== "production") {
   throw new Error("Audit mode must be either full or production.");
 }
 
-const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+const npmCli = resolveNpmCli("npm");
 const auditConfig = fileURLToPath(new URL("npm-audit.npmrc", import.meta.url));
 const args = ["audit", "--audit-level=low"];
 if (mode === "production") {
@@ -21,7 +22,7 @@ for (const key of Object.keys(childEnvironment)) {
   }
 }
 
-const result = spawnSync(npmCommand, args, {
+const result = spawnSync(npmCli.command, [...npmCli.argumentPrefix, ...args], {
   cwd: process.cwd(),
   env: {
     ...childEnvironment,

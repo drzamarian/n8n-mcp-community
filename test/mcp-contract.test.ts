@@ -117,6 +117,35 @@ test("all 44 tools publish conservative annotations from the typed registry", as
   }
 });
 
+test("every confirming tool documents its exact confirmation phrase, derived without drift", async () => {
+  const { client, server } = await connectedClient();
+  try {
+    const listed = await client.listTools();
+    let confirmingTools = 0;
+    for (const definition of TOOL_DEFINITIONS) {
+      if (definition.confirmationPhrase === undefined) continue;
+      confirmingTools += 1;
+      const tool = listed.tools.find((candidate) => candidate.name === definition.name);
+      assert(tool, `Missing listed tool ${definition.name}`);
+      const field = (
+        tool.inputSchema.properties as Record<string, { description?: string }> | undefined
+      )?.confirmation;
+      assert(field?.description, `${definition.name} confirmation field lacks a description`);
+      // Discoverable: the exact required phrase template is present in the schema the client sees.
+      assert(
+        field.description.includes(definition.confirmationPhrase),
+        `${definition.name} confirmation description "${field.description}" omits phrase "${definition.confirmationPhrase}"`,
+      );
+      // Never a trivial retry: the guard promises not to echo the phrase back on mismatch.
+      assert.match(field.description, /without echoing the expected phrase/);
+    }
+    assert.equal(confirmingTools, 14, "expected exactly 14 confirmation-guarded tools");
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
 test("every static resource is readable and every prompt is retrievable offline", async () => {
   const { client, server } = await connectedClient();
   try {
