@@ -163,7 +163,7 @@ try {
   const tarball = path.join(temporaryRoot, artifact.filename);
   if ((await digest(tarball)) !== artifactBaseline.npm.sha256) {
     throw new Error(
-      `npm artifact digest differs from the reviewed baseline. The digest covers the gzip layer, which the Node.js zlib produces: identical content compresses to different bytes on a different Node version. Baselines are generated on the pinned release runtime; this process is Node.js ${process.versions.node}.`,
+      `npm artifact digest differs from the reviewed baseline. The digest covers exact artifact bytes: a different Node.js zlib compresses identical content differently, and a platform-variant checkout or build (for example CRLF line endings) changes the content itself. Baselines are generated on the pinned release runtime from an LF tree; this process is Node.js ${process.versions.node}.`,
     );
   }
   // The offline install must resolve without registry metadata: npm ci caches dependency tarballs

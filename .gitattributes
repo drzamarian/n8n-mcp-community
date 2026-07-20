@@ -1,0 +1,7 @@
+# Byte-reproducible artifacts require identical checkouts on every platform: the
+# npm and MCPB digests cover exact file bytes, so a CRLF checkout on Windows
+# would change the packed content. Every text file stays LF everywhere.
+* text=auto eol=lf
+*.gif binary
+*.png binary
+*.jpg binary
