@@ -6,6 +6,16 @@ import process from "node:process";
 import { resolveNodeEntrypoint, resolveNpmCli, runPortableCommandSync } from "./portable-cli.mjs";
 import { canonicalSbomSha256 } from "./verify-release-artifacts.mjs";
 
+// The npm tarball and MCPB digests cover the gzip/deflate layer, which is produced by the Node.js
+// zlib: a different Node version can compress identical content to different bytes, and CI/release
+// then reject the baseline. Only the pinned release runtime may generate baselines.
+const BASELINE_NODE_VERSION = "24.18.0";
+if (process.versions.node !== BASELINE_NODE_VERSION) {
+  throw new Error(
+    `Artifact baselines must be generated on Node.js ${BASELINE_NODE_VERSION} (the pinned release runtime); this is Node.js ${process.versions.node}. Identical content compresses to different bytes on another Node zlib. Generate the baseline inside a node:${BASELINE_NODE_VERSION} container.`,
+  );
+}
+
 const root = process.cwd();
 const npmCli = resolveNpmCli("npm");
 const mcpbCli = resolveNodeEntrypoint(

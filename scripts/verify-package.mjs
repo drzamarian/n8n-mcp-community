@@ -162,7 +162,9 @@ try {
 
   const tarball = path.join(temporaryRoot, artifact.filename);
   if ((await digest(tarball)) !== artifactBaseline.npm.sha256) {
-    throw new Error("npm artifact digest differs from the reviewed baseline.");
+    throw new Error(
+      `npm artifact digest differs from the reviewed baseline. The digest covers the gzip layer, which the Node.js zlib produces: identical content compresses to different bytes on a different Node version. Baselines are generated on the pinned release runtime; this process is Node.js ${process.versions.node}.`,
+    );
   }
   await writeFile(
     path.join(temporaryRoot, "package.json"),
