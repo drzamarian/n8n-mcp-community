@@ -40,7 +40,7 @@ diagnostics using only synthetic identifiers and documented output shapes.
 The current source candidate has been verified with:
 
 - exactly **44 tools**, **5 resources**, and **4 prompts** over real stdio;
-- **270 passing tests** and the complete verification gate on Node.js 22.23.1
+- **271 passing tests** and the complete verification gate on Node.js 22.23.1
   and 24.18.0;
 - zero findings from Gitleaks, Semgrep, Trivy, and both production/full
   `npm audit` runs; all three source scanners are reproduced in CI, with

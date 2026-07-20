@@ -12,7 +12,7 @@ import {
 } from "./schemas.js";
 
 const credentialMetadataSchema = z.object({
-  id: identifier,
+  id: identifier(),
   name: z.string().min(1).max(256),
   type: z.string().min(1).max(256),
   createdAt: z.string().optional(),
@@ -42,13 +42,13 @@ const workflowCredentialReferenceSchema = z
   });
 
 const usageWorkflowSchema = z.object({
-  id: identifier,
+  id: identifier(),
   name: z.string().min(1).max(256),
   active: z.boolean(),
   nodes: z
     .array(
       z.object({
-        id: identifier.optional(),
+        id: identifier().optional(),
         name: z.string().min(1).max(256),
         type: z.string().min(1).max(256),
         credentials: z.record(workflowCredentialReferenceSchema).optional(),
@@ -86,7 +86,7 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
     title: "Delete credential",
     description: "Permanently delete one stored credential after exact confirmation.",
     operation: "unsafe",
-    input: { credentialId: identifier, confirmation },
+    input: { credentialId: identifier(), confirmation },
     confirmation: (input) => ({
       supplied: input.confirmation,
       expected: `DELETE ${input.credentialId}`,
@@ -103,7 +103,7 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
     title: "Get credential schema",
     description: "Get the supported public schema for one credential type.",
     operation: "read-only",
-    input: { credentialType: identifier },
+    input: { credentialType: identifier() },
     handler: async (input, context) =>
       z.record(z.unknown()).parse(
         await context.client().request({
@@ -131,7 +131,7 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
     title: "Get credential",
     description: "Get public metadata for one credential without retrieving secret values.",
     operation: "read-only",
-    input: { credentialId: identifier },
+    input: { credentialId: identifier() },
     handler: async (input, context) =>
       credentialMetadataSchema.parse(
         await context.client().request({ path: `/credentials/${pathSegment(input.credentialId)}` }),
@@ -145,7 +145,7 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
     operation: "write",
     destructive: true,
     input: {
-      credentialId: identifier,
+      credentialId: identifier(),
       name: z.string().min(1).max(128).optional(),
       type: z
         .string()
@@ -192,7 +192,7 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
     description: "Test one stored credential. This may contact the credential's external service.",
     operation: "unsafe",
     openWorld: true,
-    input: { credentialId: identifier, confirmation },
+    input: { credentialId: identifier(), confirmation },
     confirmation: (input) => ({
       supplied: input.confirmation,
       expected: `TEST ${input.credentialId}`,
@@ -226,7 +226,7 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
     description: "Scan one bounded workflow page for exact references to one credential ID.",
     operation: "read-only",
     input: {
-      credentialId: identifier,
+      credentialId: identifier(),
       cursor: cursor.optional(),
       limit: pageLimit(100, 50),
       active: z.boolean().optional(),

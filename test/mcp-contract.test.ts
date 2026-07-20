@@ -117,6 +117,35 @@ test("all 44 tools publish conservative annotations from the typed registry", as
   }
 });
 
+test("every published tool schema is fully inline, with no $ref, for clients without $ref support", async () => {
+  const { client, server } = await connectedClient();
+  try {
+    const listed = await client.listTools();
+    assert.equal(listed.tools.length, 44);
+    for (const tool of listed.tools) {
+      for (const [kind, schema] of [
+        ["inputSchema", tool.inputSchema],
+        ["outputSchema", tool.outputSchema],
+      ] as const) {
+        assert(schema, `${tool.name} lacks ${kind}`);
+        const stack: unknown[] = [schema];
+        while (stack.length > 0) {
+          const current = stack.pop();
+          if (current === null || typeof current !== "object") continue;
+          assert(
+            !Object.hasOwn(current, "$ref"),
+            `${tool.name} ${kind} contains a "$ref"; reuse of one Zod instance within a tool makes the SDK emit refs some clients cannot resolve`,
+          );
+          stack.push(...Object.values(current as Record<string, unknown>));
+        }
+      }
+    }
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
 test("every confirming tool documents its exact confirmation phrase, derived without drift", async () => {
   const { client, server } = await connectedClient();
   try {

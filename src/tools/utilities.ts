@@ -19,7 +19,7 @@ const workflowSearchSchema = z.object({
   data: z
     .array(
       z.object({
-        id: identifier,
+        id: identifier(),
         name: z.string().min(1).max(256),
         active: z.boolean(),
         nodes: z.array(z.object({ type: z.string().min(1).max(256) }).passthrough()).max(1_000),
@@ -37,7 +37,7 @@ const nodeInventoryPageSchema = z.object({
   data: z
     .array(
       z.object({
-        id: identifier,
+        id: identifier(),
         nodes: z.array(z.object({ type: z.string() }).passthrough()).max(1_000),
       }),
     )
@@ -349,7 +349,7 @@ export const utilityTools: readonly ToolDefinition[] = Object.freeze([
       };
     },
     input: {
-      workflowId: identifier,
+      workflowId: identifier(),
       profile: z.enum(["quick", "deep"]).default("quick"),
       lookbackHours: z.number().int().min(1).max(720).optional(),
       maxExecutions: z.number().int().min(1).max(100).optional(),

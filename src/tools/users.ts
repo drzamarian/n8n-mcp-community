@@ -11,9 +11,9 @@ import {
 } from "./schemas.js";
 
 const email = z.string().email().max(254);
-const userLookup = z.union([identifier, email]);
+const userLookup = z.union([identifier(), email]);
 const userSchema = z.object({
-  id: identifier,
+  id: identifier(),
   email: email.optional(),
   firstName: z.string().max(128).nullable().optional(),
   lastName: z.string().max(128).nullable().optional(),
@@ -31,7 +31,7 @@ const invitationResultSchema = z
   .object({
     user: z
       .object({
-        id: identifier,
+        id: identifier(),
         email,
         role: z.enum(["global:member", "global:admin"]).optional(),
         emailSent: z.boolean(),
@@ -44,7 +44,7 @@ const invitationResultSchema = z
 const invitationResponseSchema = z.array(invitationResultSchema).max(1);
 
 function encodedLookup(value: string): string {
-  return identifier.safeParse(value).success
+  return identifier().safeParse(value).success
     ? pathSegment(value)
     : encodePathSegment(email.parse(value));
 }
@@ -140,7 +140,7 @@ export const userTools: readonly ToolDefinition[] = Object.freeze([
     description:
       "Delete one API-eligible user after exact confirmation. Ownership handling follows n8n's supported Public API behavior.",
     operation: "unsafe",
-    input: { userId: identifier, confirmation },
+    input: { userId: identifier(), confirmation },
     confirmation: (input) => ({ supplied: input.confirmation, expected: `DELETE ${input.userId}` }),
     handler: async (input, context) => {
       await context.client().request({

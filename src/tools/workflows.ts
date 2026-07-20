@@ -33,7 +33,7 @@ const DEFAULT_FALSE_NODE_FIELDS = new Set<string>([
 
 const nodeSchema = z
   .object({
-    id: identifier.optional(),
+    id: identifier().optional(),
     name: z.string().min(1).max(256),
     type: z.string().min(1).max(256),
     typeVersion: z.number().finite().positive().max(10_000),
@@ -59,8 +59,8 @@ const connectionsSchema = z.record(
 const staticDataSchema = z.union([z.record(z.unknown()), z.string().max(1024 * 1024)]).nullable();
 
 const workflowSchema = z.object({
-  id: identifier,
-  versionId: identifier.optional(),
+  id: identifier(),
+  versionId: identifier().optional(),
   name: z.string().min(1).max(256),
   description: z.string().max(16_384).nullable().optional(),
   active: z.boolean().optional(),
@@ -74,8 +74,8 @@ const workflowSchema = z.object({
 });
 
 const historicalWorkflowSchema = z.object({
-  workflowId: identifier,
-  versionId: identifier,
+  workflowId: identifier(),
+  versionId: identifier(),
   name: z.string().max(256).nullable().optional(),
   nodes: z.array(nodeSchema).max(1_000),
   connections: connectionsSchema,
@@ -90,7 +90,7 @@ const workflowListSchema = z
 
 const tagSchema = z
   .object({
-    id: identifier,
+    id: identifier(),
     name: z.string().max(256).optional(),
     createdAt: z.string().max(64).optional(),
     updatedAt: z.string().max(64).optional(),
@@ -566,7 +566,7 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
     title: "Get workflow",
     description: "Get one workflow by its stable ID.",
     operation: "read-only",
-    input: { workflowId: identifier, excludePinnedData: z.boolean().default(true) },
+    input: { workflowId: identifier(), excludePinnedData: z.boolean().default(true) },
     handler: async (input, context) =>
       workflowForOutput(
         workflowSchema.parse(
@@ -611,7 +611,7 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
     description: "Update selected workflow fields while preserving omitted writable fields.",
     operation: "write",
     destructive: true,
-    input: { workflowId: identifier, expectedVersionId: identifier, ...workflowWriteFields },
+    input: { workflowId: identifier(), expectedVersionId: identifier(), ...workflowWriteFields },
     handler: async (input, context) => {
       if (
         [
@@ -693,11 +693,11 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
     operation: "write",
     destructive: true,
     input: {
-      workflowId: identifier,
-      nodeId: identifier,
+      workflowId: identifier(),
+      nodeId: identifier(),
       path: z.string().min(1).max(512),
       value: requiredSafeJsonValue,
-      expectedVersionId: identifier,
+      expectedVersionId: identifier(),
       acknowledgeNonAtomicRisk: z.literal(true),
     },
     handler: async (input, context) => {
@@ -776,7 +776,7 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
     title: "Delete workflow",
     description: "Permanently delete one workflow after an exact confirmation.",
     operation: "unsafe",
-    input: { workflowId: identifier, confirmation },
+    input: { workflowId: identifier(), confirmation },
     confirmation: (input) => ({
       supplied: input.confirmation,
       expected: `DELETE ${input.workflowId}`,
@@ -794,7 +794,7 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
       title: `${action === "activate" ? "Activate" : "Deactivate"} workflow`,
       description: `${action === "activate" ? "Activate" : "Deactivate"} one workflow after exact confirmation.`,
       operation: "unsafe",
-      input: { workflowId: identifier, confirmation },
+      input: { workflowId: identifier(), confirmation },
       confirmation: (input) => ({
         supplied: input.confirmation,
         expected: `${action.toUpperCase()} ${input.workflowId}`,
@@ -813,7 +813,7 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
     title: "Get workflow version",
     description: "Get one retained historical workflow version.",
     operation: "read-only",
-    input: { workflowId: identifier, versionId: identifier },
+    input: { workflowId: identifier(), versionId: identifier() },
     handler: async (input, context) => {
       const historical = historicalWorkflowSchema.parse(
         await fetchWorkflowVersion(
@@ -830,7 +830,7 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
     title: "Get workflow tags",
     description: "List the tags assigned to one workflow.",
     operation: "read-only",
-    input: { workflowId: identifier },
+    input: { workflowId: identifier() },
     handler: async (input, context) =>
       boundedTagCollection(
         await context
@@ -844,7 +844,7 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
     description: "Replace the tags assigned to one workflow.",
     operation: "write",
     destructive: true,
-    input: { workflowId: identifier, tagIds: z.array(identifier).max(100) },
+    input: { workflowId: identifier(), tagIds: z.array(identifier()).max(100) },
     handler: async (input, context) =>
       z
         .array(tagSchema)
@@ -863,7 +863,7 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
       title: `${action === "archive" ? "Archive" : "Unarchive"} workflow`,
       description: `${action === "archive" ? "Archive" : "Restore"} one workflow after exact confirmation.`,
       operation: "unsafe",
-      input: { workflowId: identifier, confirmation },
+      input: { workflowId: identifier(), confirmation },
       confirmation: (input) => ({
         supplied: input.confirmation,
         expected: `${action.toUpperCase()} ${input.workflowId}`,
@@ -884,9 +884,9 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
       "Compare nodes and connections between two retained workflow snapshots without returning raw values.",
     operation: "read-only",
     input: {
-      workflowId: identifier,
-      fromVersionId: identifier,
-      toVersionId: identifier.optional(),
+      workflowId: identifier(),
+      fromVersionId: identifier(),
+      toVersionId: identifier().optional(),
       ignoreLayout: z.boolean().default(true),
     },
     handler: async (input, context) => {

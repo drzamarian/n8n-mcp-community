@@ -5,7 +5,7 @@ import { confirmation, cursor, identifier, pageLimit, pathSegment, tagName } fro
 
 const tagSchema = z
   .object({
-    id: identifier,
+    id: identifier(),
     name: z.string().min(1).max(256),
     createdAt: z.string().max(64).optional(),
     updatedAt: z.string().max(64).optional(),
@@ -36,7 +36,7 @@ export const tagTools: readonly ToolDefinition[] = Object.freeze([
     title: "Get tag",
     description: "Get one workflow tag by ID.",
     operation: "read-only",
-    input: { tagId: identifier },
+    input: { tagId: identifier() },
     handler: async (input, context) =>
       tagSchema.parse(
         await context.client().request({ path: `/tags/${pathSegment(input.tagId)}` }),
@@ -60,7 +60,7 @@ export const tagTools: readonly ToolDefinition[] = Object.freeze([
     title: "Update tag",
     description: "Rename one workflow tag.",
     operation: "write",
-    input: { tagId: identifier, name: tagName },
+    input: { tagId: identifier(), name: tagName },
     handler: async (input, context) =>
       tagSchema.parse(
         await context.client().request({
@@ -75,7 +75,7 @@ export const tagTools: readonly ToolDefinition[] = Object.freeze([
     title: "Delete tag",
     description: "Permanently delete one workflow tag after exact confirmation.",
     operation: "unsafe",
-    input: { tagId: identifier, confirmation },
+    input: { tagId: identifier(), confirmation },
     confirmation: (input) => ({ supplied: input.confirmation, expected: `DELETE ${input.tagId}` }),
     handler: async (input, context) => {
       await context

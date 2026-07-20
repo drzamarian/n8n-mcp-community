@@ -20,9 +20,11 @@ export const MUTABLE_NODE_ROOTS = [
 ] as const;
 const MUTABLE_NODE_ROOT_SET = new Set<string>(MUTABLE_NODE_ROOTS);
 
-export const identifier = z
-  .string()
-  .regex(IDENTIFIER, "Use 1-128 ASCII letters, digits, underscores, or hyphens.");
+// A factory rather than a shared instance: when one Zod instance appears in two properties of the
+// same tool, the SDK's tools/list conversion dedupes the second occurrence into a "$ref", which
+// not every MCP client resolves. Fresh instances keep every published schema fully inline.
+export const identifier = (): z.ZodString =>
+  z.string().regex(IDENTIFIER, "Use 1-128 ASCII letters, digits, underscores, or hyphens.");
 export const cursor = z
   .string()
   .min(1)
@@ -228,5 +230,5 @@ export function encodePathSegment(value: string): string {
 }
 
 export function pathSegment(value: string): string {
-  return encodePathSegment(identifier.parse(value));
+  return encodePathSegment(identifier().parse(value));
 }

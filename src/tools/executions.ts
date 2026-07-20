@@ -3,7 +3,7 @@ import { defineTool, type ToolDefinition } from "./definition.js";
 import { booleanQuery, numberQuery } from "./common.js";
 import { confirmation, cursor, identifier, pageLimit, pathSegment } from "./schemas.js";
 
-const executionId = z.union([identifier, z.number().int().nonnegative().transform(String)]);
+const executionId = z.union([identifier(), z.number().int().nonnegative().transform(String)]);
 const executionStatus = z.enum([
   "new",
   "running",
@@ -72,7 +72,7 @@ export const executionTools: readonly ToolDefinition[] = Object.freeze([
     input: {
       includeData: z.boolean().default(false),
       status: executionStatus.optional(),
-      workflowId: identifier.optional(),
+      workflowId: identifier().optional(),
       limit: pageLimit(),
       cursor: cursor.optional(),
     },
