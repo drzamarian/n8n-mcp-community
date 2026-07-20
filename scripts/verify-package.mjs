@@ -166,18 +166,51 @@ try {
       `npm artifact digest differs from the reviewed baseline. The digest covers the gzip layer, which the Node.js zlib produces: identical content compresses to different bytes on a different Node version. Baselines are generated on the pinned release runtime; this process is Node.js ${process.versions.node}.`,
     );
   }
+  // The offline install must resolve without registry metadata: npm ci caches dependency tarballs
+  // but not packuments, so free resolution ENOTCACHEDs on a clean machine (it only ever passed on
+  // machines whose personal cache happened to hold the packuments). Project the committed
+  // lockfile's production nodes into the verifier project instead; the tree then reifies offline
+  // from the tarball cache and stays pinned by the audited integrity values.
+  const sourceLock = JSON.parse(await readFile(path.join(root, "package-lock.json"), "utf8"));
+  const productionPackages = Object.fromEntries(
+    Object.entries(sourceLock.packages ?? {}).filter(
+      ([directory, meta]) => directory !== "" && meta?.dev !== true,
+    ),
+  );
+  const fileSpecifier = `file:${artifact.filename}`;
   await writeFile(
     path.join(temporaryRoot, "package.json"),
-    `${JSON.stringify({ name: "artifact-verifier", version: "1.0.0", private: true })}\n`,
+    `${JSON.stringify({
+      name: "artifact-verifier",
+      version: "1.0.0",
+      private: true,
+      dependencies: { [sourceManifest.name]: fileSpecifier },
+    })}\n`,
   );
   await writeFile(
     path.join(temporaryRoot, "package-lock.json"),
-    `${JSON.stringify({ name: "artifact-verifier", version: "1.0.0", lockfileVersion: 3, packages: { "": { name: "artifact-verifier", version: "1.0.0" } } })}\n`,
+    `${JSON.stringify({
+      name: "artifact-verifier",
+      version: "1.0.0",
+      lockfileVersion: 3,
+      requires: true,
+      packages: {
+        "": {
+          name: "artifact-verifier",
+          version: "1.0.0",
+          dependencies: { [sourceManifest.name]: fileSpecifier },
+        },
+        [`node_modules/${sourceManifest.name}`]: {
+          version: artifact.version,
+          resolved: fileSpecifier,
+          dependencies: { ...sourceManifest.dependencies },
+          ...(sourceManifest.bin === undefined ? {} : { bin: sourceManifest.bin }),
+        },
+        ...productionPackages,
+      },
+    })}\n`,
   );
-  runNpm(
-    ["install", "--offline", "--ignore-scripts", "--no-audit", "--no-fund", tarball],
-    temporaryRoot,
-  );
+  runNpm(["ci", "--offline", "--ignore-scripts", "--no-audit", "--no-fund"], temporaryRoot);
 
   const installed = path.join(temporaryRoot, "node_modules", "n8n-mcp-community");
   const entry = path.join(installed, "dist", "index.js");
