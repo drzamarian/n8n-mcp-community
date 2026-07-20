@@ -12,6 +12,20 @@ updates:
     cooldown:
       default-days: 7
     labels: [dependencies]
+    ignore:
+      # zod 4 replaces the JSON Schema generation path the tool contracts pin;
+      # migrating is a reviewed project, not a routine bump.
+      - dependency-name: zod
+        update-types: ["version-update:semver-major"]
+      # Node type majors move only together with the supported runtime
+      # envelope documented in README and CI.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # TypeScript majors change emitted dist bytes and the toolchain
+      # contract; they require a reviewed transition and a regenerated
+      # artifact baseline.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     groups:
       development-dependencies:
         dependency-type: development
