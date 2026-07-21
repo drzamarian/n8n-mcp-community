@@ -178,6 +178,12 @@ try {
     ),
   );
   const fileSpecifier = `file:${artifact.filename}`;
+  // Root-level overrides must be projected into the verifier project: npm
+  // honors overrides only from the installing root, and without them `npm ci`
+  // rejects the audited lockfile wherever an override deviates from a
+  // dependency's declared range.
+  const sourceOverrides =
+    sourceManifest.overrides === undefined ? {} : { overrides: sourceManifest.overrides };
   await writeFile(
     path.join(temporaryRoot, "package.json"),
     `${JSON.stringify({
@@ -185,6 +191,7 @@ try {
       version: "1.0.0",
       private: true,
       dependencies: { [sourceManifest.name]: fileSpecifier },
+      ...sourceOverrides,
     })}\n`,
   );
   await writeFile(
@@ -199,6 +206,7 @@ try {
           name: "artifact-verifier",
           version: "1.0.0",
           dependencies: { [sourceManifest.name]: fileSpecifier },
+          ...sourceOverrides,
         },
         [`node_modules/${sourceManifest.name}`]: {
           version: artifact.version,
