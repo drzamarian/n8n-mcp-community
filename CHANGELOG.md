@@ -6,11 +6,23 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-21
+
 ### Security
 
 - npm publication is now exclusively GitHub OIDC trusted publishing: the
   v0.1.0 first-publish bootstrap token binding was removed from the release
   workflow, and the release policy fails closed on any npm token reference.
+
+### Changed
+
+- Documentation now describes the published state: the README leads with the
+  pinned exact-version `npx` quick start, states up front that the safety
+  modes are progressive rather than restrictive, and the installation,
+  client, compatibility, and FAQ guides replace pre-release "planned"
+  wording with the released routes.
+- Release-asset links use the stable latest-release URL so documentation
+  links remain valid across versions.
 
 ## [0.1.0] - 2026-07-20
 
@@ -118,5 +130,6 @@ All notable changes to this project will be documented here. The format follows
   credentials, keys, and generated release artifacts cannot survive in that
   publishable history; authenticated public release receipts remain supported.
 
-[Unreleased]: https://github.com/drzamarian/n8n-mcp-community/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/drzamarian/n8n-mcp-community/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/drzamarian/n8n-mcp-community/releases/tag/v0.1.1
 [0.1.0]: https://github.com/drzamarian/n8n-mcp-community/releases/tag/v0.1.0

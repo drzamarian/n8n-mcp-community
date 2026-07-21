@@ -3,6 +3,7 @@ import { spawn, spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { resolve } from "node:path";
 import test from "node:test";
 import { buildDoctorReport, probeFloorCompatibility } from "../src/doctor.js";
+import { PACKAGE_VERSION } from "../src/version.js";
 import { N8nClient } from "../src/n8n/client.js";
 
 const ENTRY = resolve("dist/index.js");
@@ -45,7 +46,7 @@ test("help and version are bounded offline commands", () => {
 
   const version = run(["--version"]);
   assert.equal(version.status, 0);
-  assert.match(version.stdout, /^0\.1\.0\s*$/);
+  assert.equal(version.stdout.trim(), PACKAGE_VERSION);
   assert.equal(version.stderr, "");
 });
 

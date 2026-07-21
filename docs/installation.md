@@ -5,9 +5,9 @@
 | Method              | Current status                           | Intended use                                              |
 | ------------------- | ---------------------------------------- | --------------------------------------------------------- |
 | Source checkout     | Available for local evaluation           | Contributors and release review                           |
-| Exact-version `npx` | Published: `n8n-mcp-community@0.1.0`     | Portable configuration across MCP clients                 |
-| Signed MCPB         | Published with the v0.1.0 GitHub release | Easiest installation in compatible desktop clients        |
-| Homebrew            | Not planned for v0.1.0                   | No formula exists and Homebrew does not update MCPB files |
+| Exact-version `npx` | Published: `n8n-mcp-community@0.1.1`     | Portable configuration across MCP clients                 |
+| Signed MCPB         | Published with the v0.1.1 GitHub release | Easiest installation in compatible desktop clients        |
+| Homebrew            | Not planned for v0.1.1                   | No formula exists and Homebrew does not update MCPB files |
 
 The source, npm package, and MCPB expose the same 44-tool runtime. Configure
 only an exact published version; never configure an unpublished version as
@@ -48,7 +48,7 @@ The recommended portable configuration pins the reviewed published version:
   "mcpServers": {
     "n8n-community": {
       "command": "npx",
-      "args": ["--yes", "n8n-mcp-community@0.1.0"],
+      "args": ["--yes", "n8n-mcp-community@0.1.1"],
       "env": {
         "N8N_API_URL": "https://n8n.example.com",
         "N8N_API_KEY": "replace-with-a-dedicated-api-key",
@@ -64,12 +64,12 @@ the server: `N8N_MCP_MODE=write` enables workflow and node authoring, and
 `N8N_MCP_MODE=unsafe` enables the complete 44-tool surface with exact
 per-call confirmations for destructive operations.
 
-`0.1.0` is published with npm provenance attestations that link the package to
+`0.1.1` is published with npm provenance attestations that link the package to
 this repository's release workflow; verify the attestation on the npm package
 page or with `npm audit signatures` before first use. Windows clients that do
 not launch `npx` directly may use
 `"command": "cmd"` with
-`"args": ["/c", "npx", "--yes", "n8n-mcp-community@0.1.0"]`.
+`"args": ["/c", "npx", "--yes", "n8n-mcp-community@0.1.1"]`.
 
 Do not use `@latest`. An exact version makes upgrades deliberate, reviewable,
 and reversible. To upgrade, replace the version only after reading the
@@ -82,7 +82,7 @@ applies; this project does not add a second updater.
 ## Signed MCPB
 
 The signed MCPB is published as a
-[v0.1.0 release asset](https://github.com/drzamarian/n8n-mcp-community/releases/tag/v0.1.0)
+[v0.1.1 release asset](https://github.com/drzamarian/n8n-mcp-community/releases/latest)
 together with `SHA256SUMS` and an SBOM. The manifest declares Linux, macOS, and
 Windows because the bundle contains the same portable Node.js stdio server on
 each platform; the release does not claim client compatibility on an operating
@@ -93,7 +93,7 @@ connection settings through that client's secret configuration UI, and confirm
 the 44-tool inventory.
 
 An MCPB is not a Homebrew package. Homebrew cannot update it unless a separate
-formula is created, and no formula is planned for v0.1.0. MCPB updates will be
+formula is created, and no formula is planned for v0.1.1. MCPB updates will be
 explicit signed release downloads or a compatible client's verified update
 flow; the exact process will be documented only after it is tested end to end.
 

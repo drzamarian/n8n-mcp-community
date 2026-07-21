@@ -8,4 +8,9 @@ exclude = [
   # npmjs.com serves 403 Forbidden to non-browser user agents, so the package
   # page cannot be machine-verified even though it is valid for humans.
   "^https://www\\.npmjs\\.com/package/n8n-mcp-community(?:/|$)",
+  # Changelog compare and release-tag links reference the release tag that is
+  # created only after the release commit lands, so they cannot be
+  # machine-verified at push time.
+  "^https://github\\.com/drzamarian/n8n-mcp-community/compare/",
+  "^https://github\\.com/drzamarian/n8n-mcp-community/releases/tag/",
 ]

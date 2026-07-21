@@ -14,8 +14,8 @@ and contract-test inventories are checked together.
 
 ## What is the easiest installation method?
 
-For a compatible desktop client, the signed MCPB from the v0.1.0 GitHub
-release is the easiest. Exact-version `npx` (`n8n-mcp-community@0.1.0`) is the
+For a compatible desktop client, the signed MCPB from the v0.1.1 GitHub
+release is the easiest. Exact-version `npx` (`n8n-mcp-community@0.1.1`) is the
 portable alternative. A source checkout remains the contributor path.
 
 ## Will I need both MCPB and npx?
@@ -27,7 +27,7 @@ for portable configuration.
 ## Can Homebrew update the MCPB?
 
 No. An MCPB is not a Homebrew formula. No Homebrew formula is planned for
-v0.1.0; bundle updates will use explicit signed releases or a compatible
+v0.1.1; bundle updates will use explicit signed releases or a compatible
 client's verified update flow.
 
 ## Why do the npx examples avoid `@latest`?

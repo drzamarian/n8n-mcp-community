@@ -11,10 +11,10 @@ and `unsafe` unlocks every tool with an exact per-call confirmation phrase for
 each destructive operation. It starts offline, uses the supported n8n Public
 API, and never sends workflow data to an external AI provider.
 
-> **v0.1.0 is published:** exact-version npm
-> ([`n8n-mcp-community@0.1.0`](https://www.npmjs.com/package/n8n-mcp-community)
+> **v0.1.1 is published:** exact-version npm
+> ([`n8n-mcp-community@0.1.1`](https://www.npmjs.com/package/n8n-mcp-community)
 > with provenance attestations), a signed MCPB in the
-> [v0.1.0 release](https://github.com/drzamarian/n8n-mcp-community/releases/tag/v0.1.0),
+> [v0.1.1 release](https://github.com/drzamarian/n8n-mcp-community/releases/latest),
 > and the MCP Registry entry `io.github.drzamarian/n8n-mcp-community`. See
 > [Installation](docs/installation.md).
 
@@ -76,7 +76,7 @@ Configure your MCP client to run the published exact version:
   "mcpServers": {
     "n8n-community": {
       "command": "npx",
-      "args": ["--yes", "n8n-mcp-community@0.1.0"],
+      "args": ["--yes", "n8n-mcp-community@0.1.1"],
       "env": {
         "N8N_API_URL": "https://n8n.example.com",
         "N8N_API_KEY": "replace-with-a-dedicated-api-key",
@@ -97,7 +97,7 @@ per-call confirmation phrase. See [Safety modes](#safety-modes).
 Restart the MCP client and confirm exactly 44 tools, 5 resources, and 4
 prompts. Compatible desktop clients can instead install the signed MCPB from
 the
-[v0.1.0 release](https://github.com/drzamarian/n8n-mcp-community/releases/tag/v0.1.0);
+[v0.1.1 release](https://github.com/drzamarian/n8n-mcp-community/releases/latest);
 verify its checksum against the release `SHA256SUMS` first.
 
 ## Quick start from source
@@ -299,7 +299,7 @@ API. The project does not redistribute the `n8n-nodes-base` catalog and does not
 use browser cookies, interactive session routes, or runtime package downloads to
 construct one.
 
-The v0.1.0 surface intentionally excludes arbitrary workflow execution,
+The v0.1.1 surface intentionally excludes arbitrary workflow execution,
 credential/workflow transfer, folders, data tables, beta evaluation endpoints,
 and execution annotations. See the [roadmap](ROADMAP.md) for the annotation
 proposal retained outside the release target.

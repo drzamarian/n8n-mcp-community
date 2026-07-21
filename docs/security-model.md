@@ -1,6 +1,6 @@
 # Security model
 
-This document describes the controls and residual risks of the v0.1.0 source
+This document describes the controls and residual risks of the v0.1.1 source
 candidate. It is a threat model, not a claim that the software or the connected
 n8n instance is invulnerable.
 

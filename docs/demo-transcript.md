@@ -6,8 +6,8 @@ standards-based MCP client interaction into a short terminal-style sequence; it
 does not claim that the client narration is a project CLI command.
 
 ```text
-$ npx --yes n8n-mcp-community@0.1.0 --version
-0.1.0
+$ npx --yes n8n-mcp-community@0.1.1 --version
+0.1.1
 
 MCP client initialized n8n-community
 44 tools | 5 resources | 4 prompts
@@ -21,7 +21,7 @@ findings: 0 critical | 0 high | 0 medium | 0 low | 0 info
 ```
 
 The version command is the published exact-version installation route for
-v0.1.0. The initialization and tool call lines represent MCP protocol
+v0.1.1. The initialization and tool call lines represent MCP protocol
 events, not shell commands. The Introspect output is the documented empty
 finding example: the real direct structured result also includes coverage, rule
 outcomes, and limitations. Its fields remain untrusted n8n-derived diagnostics

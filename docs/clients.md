@@ -39,7 +39,7 @@ The portable configuration runs the reviewed published version explicitly:
   "mcpServers": {
     "n8n-community": {
       "command": "npx",
-      "args": ["--yes", "n8n-mcp-community@0.1.0"],
+      "args": ["--yes", "n8n-mcp-community@0.1.1"],
       "env": {
         "N8N_API_URL": "https://n8n.example.com",
         "N8N_API_KEY": "replace-with-a-dedicated-api-key",
@@ -59,7 +59,7 @@ On Windows, a client that cannot launch `npx` directly may use:
 ```json
 {
   "command": "cmd",
-  "args": ["/c", "npx", "--yes", "n8n-mcp-community@0.1.0"]
+  "args": ["/c", "npx", "--yes", "n8n-mcp-community@0.1.1"]
 }
 ```
 

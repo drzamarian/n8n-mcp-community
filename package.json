@@ -1,6 +1,6 @@
 {
   "name": "n8n-mcp-community",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A security-focused MCP server for self-hosted n8n Community Edition.",
   "private": false,
   "license": "MIT",
