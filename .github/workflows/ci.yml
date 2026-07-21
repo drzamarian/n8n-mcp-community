@@ -62,8 +62,7 @@ jobs:
         env:
           N8N_MCP_APPROVAL_KEY: ${{ secrets.N8N_MCP_APPROVAL_KEY }}
         run: |
-          umask 077
-          printf '%s' "${N8N_MCP_APPROVAL_KEY}" > "${RUNNER_TEMP}/approval.key"
+          (umask 077 && printf '%s' "${N8N_MCP_APPROVAL_KEY}" > "${RUNNER_TEMP}/approval.key")
           N8N_MCP_APPROVAL_KEY_FILE="${RUNNER_TEMP}/approval.key" npm run verify
 
   packed-smoke:
@@ -94,8 +93,7 @@ jobs:
         env:
           N8N_MCP_APPROVAL_KEY: ${{ secrets.N8N_MCP_APPROVAL_KEY }}
         run: |
-          umask 077
-          printf '%s' "${N8N_MCP_APPROVAL_KEY}" > "${RUNNER_TEMP}/approval.key"
+          (umask 077 && printf '%s' "${N8N_MCP_APPROVAL_KEY}" > "${RUNNER_TEMP}/approval.key")
           N8N_MCP_APPROVAL_KEY_FILE="${RUNNER_TEMP}/approval.key" npm run check:package
 
   dependency-audit:
