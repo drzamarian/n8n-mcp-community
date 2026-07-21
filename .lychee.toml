@@ -5,4 +5,7 @@ accept = [200, 204, 206, 429]
 exclude = [
   "^https://n8n\\.example\\.(?:com|test)(?:/|$)",
   "^https://example\\.(?:com|test)(?:/|$)",
+  # npmjs.com serves 403 Forbidden to non-browser user agents, so the package
+  # page cannot be machine-verified even though it is valid for humans.
+  "^https://www\\.npmjs\\.com/package/n8n-mcp-community(?:/|$)",
 ]
