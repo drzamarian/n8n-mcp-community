@@ -6,16 +6,15 @@ before public disclosure.
 
 ## Supported versions
 
-No public version is supported until the first signed release. After release,
-the latest maintained minor line will receive security fixes. Older lines may be
-asked to upgrade when a safe backport is impractical.
+The latest maintained minor line — currently 0.1.x — receives security fixes.
+Older lines may be asked to upgrade when a safe backport is impractical.
 
 ## Report a vulnerability
 
-Use GitHub's **Security → Report a vulnerability** form. This repository will
-not be published until GitHub private vulnerability reporting is enabled and
-verified. Do not open a public issue with exploit details, credentials, workflow
-payloads, or identifying instance data.
+Use GitHub's **Security → Report a vulnerability** form; private vulnerability
+reporting is enabled and verified for this repository. Do not open a public
+issue with exploit details, credentials, workflow payloads, or identifying
+instance data.
 
 If the private form is unavailable, open a public issue containing only the
 sentence “Private security contact requested.” Do not include technical details
