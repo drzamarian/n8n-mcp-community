@@ -2,10 +2,14 @@
 
 **A security-focused Model Context Protocol server for self-hosted n8n Community Edition.**
 
-Connect an MCP client to n8n through 44 carefully bounded tools for workflows,
-executions, credentials, tags, users, diagnostics, and instance metadata. The
-server starts offline, defaults to read-only, uses the supported n8n Public API,
-and never sends workflow data to an external AI provider.
+Connect an MCP client to the **full n8n management surface**: create, edit,
+activate, and delete workflows, update individual nodes surgically, and manage
+executions, credentials, tags, users, diagnostics, and instance metadata — 44
+carefully bounded tools in total. Safety here is **progressive, not
+restrictive**: the server defaults to read-only, `write` unlocks authoring,
+and `unsafe` unlocks every tool with an exact per-call confirmation phrase for
+each destructive operation. It starts offline, uses the supported n8n Public
+API, and never sends workflow data to an external AI provider.
 
 > **v0.1.0 is published:** exact-version npm
 > ([`n8n-mcp-community@0.1.0`](https://www.npmjs.com/package/n8n-mcp-community)
@@ -82,6 +86,13 @@ Configure your MCP client to run the published exact version:
   }
 }
 ```
+
+`read-only` is the recommended starting point, not a capability ceiling: the
+same 44-tool surface includes full workflow authoring. Set
+`N8N_MCP_MODE=write` to create and edit workflows, nodes, credentials, and
+tags, or `N8N_MCP_MODE=unsafe` to enable every tool — activation, deletion,
+retries, and the other destructive operations, each still guarded by an exact
+per-call confirmation phrase. See [Safety modes](#safety-modes).
 
 Restart the MCP client and confirm exactly 44 tools, 5 resources, and 4
 prompts. Compatible desktop clients can instead install the signed MCPB from

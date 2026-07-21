@@ -59,6 +59,11 @@ The recommended portable configuration pins the reviewed published version:
 }
 ```
 
+`read-only` in this example is a safe starting default, not a limitation of
+the server: `N8N_MCP_MODE=write` enables workflow and node authoring, and
+`N8N_MCP_MODE=unsafe` enables the complete 44-tool surface with exact
+per-call confirmations for destructive operations.
+
 `0.1.0` is published with npm provenance attestations that link the package to
 this repository's release workflow; verify the attestation on the npm package
 page or with `npm audit signatures` before first use. Windows clients that do
