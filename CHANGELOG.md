@@ -6,6 +6,14 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- The transitive `fast-uri` dependency is updated past
+  GHSA-v2hh-gcrm-f6hx, and `@hono/node-server` is overridden to the patched
+  2.x line for GHSA-frvp-7c67-39w9. The affected HTTP adapter is unused by
+  this stdio-only server; the override keeps the dependency audit at zero
+  findings and is removable once the MCP SDK adopts the patched major.
+
 ## [0.1.1] - 2026-07-21
 
 ### Security
