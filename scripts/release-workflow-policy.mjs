@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { parseAllDocuments, stringify } from "yaml";
 
 const EXPECTED_RELEASE_SEMANTIC_SHA256 =
-  "632d0da434258a360d3fa300d3446ddf76034a8bc617d8960bdafb710f66a86b";
+  "9977969e2c0f4b6936e6fdb08c30639187e07001ed88c14eddf9a6403ab43c60";
 
 function fail(message) {
   throw new Error(message);

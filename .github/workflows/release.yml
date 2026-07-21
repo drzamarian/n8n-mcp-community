@@ -233,7 +233,7 @@ jobs:
             | sha256sum --check -
           tar -xzf mcp-publisher.tar.gz mcp-publisher
           chmod 0755 mcp-publisher
-          ./mcp-publisher --version | grep -F 'mcp-publisher 1.7.9'
+          ./mcp-publisher --version 2>&1 | grep -F 'mcp-publisher 1.7.9'
       - name: Publish validated metadata to the MCP Registry
         run: |
           ./mcp-publisher login github-oidc
