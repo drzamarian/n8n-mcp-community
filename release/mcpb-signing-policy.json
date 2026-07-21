@@ -1,7 +1,10 @@
 {
   "schemaVersion": 1,
-  "status": "unconfigured",
-  "signingCertificateSha256": null,
-  "trustAnchor": null,
+  "status": "active",
+  "signingCertificateSha256": "f636afa4026a3706f8a2091248919f49b4daaafb086fe85df0853cde714eb3e4",
+  "trustAnchor": {
+    "path": "mcpb-trust-anchor.pem",
+    "pemSha256": "5b5a79986d4cc3d823950a14ccd13da79164bb850549c9cd04b35daf04f8fe0a"
+  },
   "intermediates": []
 }

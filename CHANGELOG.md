@@ -6,6 +6,22 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-20
+
+### Added
+
+- Secure stdio MCP runtime with exactly 44 tools, five resources, and four prompts.
+- Three operation modes with exact confirmations for unsafe calls.
+- Deterministic local Introspect engine v2 with 23 diagnostic rules.
+- Strict Node 22/24 test, build, dependency-license, and package gates.
+- Native-English public documentation and complete tool reference.
+- Embedded synthetic terminal demonstration with a packaged transcript and an
+  automated orphan-asset documentation gate.
+
+- Optional `doctor` floor-compatibility probe behind `N8N_MCP_DOCTOR_PROBE=1`:
+  two bounded single-item reads diagnose `floor_compatible`,
+  `below_floor_indicators`, or `inconclusive` without claiming a remote version.
+
 ### Changed
 
 - Every confirmation-guarded tool now documents its exact required confirmation
@@ -14,12 +30,6 @@ All notable changes to this project will be documented here. The format follows
   documented and enforced phrases can never drift. The phrase is discoverable in
   the tool schema an MCP client sees, yet is still never echoed back on a
   mismatch, so the deliberate-action guard is preserved.
-
-### Added
-
-- Optional `doctor` floor-compatibility probe behind `N8N_MCP_DOCTOR_PROBE=1`:
-  two bounded single-item reads diagnose `floor_compatible`,
-  `below_floor_indicators`, or `inconclusive` without claiming a remote version.
 
 ### Fixed
 
@@ -66,18 +76,9 @@ All notable changes to this project will be documented here. The format follows
   apostrophe-containing addresses accepted by the public input contract.
 - Reject retained workflow snapshots whose returned version identity differs
   from either selector requested by the workflow-diff tool.
-
-## [0.1.0] - Unpublished candidate
-
-### Added
-
-- Secure stdio MCP runtime with exactly 44 tools, five resources, and four prompts.
-- Three operation modes with exact confirmations for unsafe calls.
-- Deterministic local Introspect engine v2 with 23 diagnostic rules.
-- Strict Node 22/24 test, build, dependency-license, and package gates.
-- Native-English public documentation and complete tool reference.
-- Embedded synthetic terminal demonstration with a packaged transcript and an
-  automated orphan-asset documentation gate.
+- Publish every tool input and output schema fully inline. Reusing one Zod
+  instance across two properties of the same tool previously emitted
+  intra-schema `$ref` pointers that not every MCP client resolves.
 
 ### Security
 
@@ -111,7 +112,5 @@ All notable changes to this project will be documented here. The format follows
   credentials, keys, and generated release artifacts cannot survive in that
   publishable history; authenticated public release receipts remain supported.
 
-No public version has been released.
-
-[Unreleased]: #unreleased
-[0.1.0]: #010---unpublished-candidate
+[Unreleased]: https://github.com/drzamarian/n8n-mcp-community/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/drzamarian/n8n-mcp-community/releases/tag/v0.1.0

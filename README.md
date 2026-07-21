@@ -7,9 +7,9 @@ executions, credentials, tags, users, diagnostics, and instance metadata. The
 server starts offline, defaults to read-only, uses the supported n8n Public API,
 and never sends workflow data to an external AI provider.
 
-> **Pre-release:** the source candidate is implemented and tested, but no npm or
-> MCPB release has been published. Use a source checkout for evaluation. Do not
-> configure an unpublished package name as though it were available.
+> **v0.1.0:** install the exact published version or use a source checkout. See
+> [Installation](docs/installation.md) for the pinned npm and signed MCPB
+> options.
 
 [Read the synthetic terminal demo transcript](docs/demo-transcript.md). It shows
 the planned exact-version startup, 44-tool inventory, and local Introspect
@@ -52,9 +52,10 @@ The current source candidate has been verified with:
 - a clean-installed npm tarball plus a byte-reproducible unsigned MCPB with the
   same compiled runtime and complete production dependency notices.
 
-Publication remains blocked on a repository-pinned MCPB signing identity and custody,
-cross-platform client lifecycle evidence, final independent implementation
-acceptance, and Walter's explicit remote and publication authorization.
+Publication proceeds only through the reviewed release procedure: the
+repository-pinned MCPB signing identity, a human artifact-baseline receipt,
+tag-scoped protected-environment approval, and an externally signed MCPB
+handoff verified byte for byte against the reviewed unsigned candidate.
 
 ## Quick start from source
 
@@ -88,7 +89,7 @@ Restart the MCP client and list tools. The server can initialize and expose its
 inventory without n8n credentials; connected tools validate the URL and API key
 only when called.
 
-The planned release will provide both a signed MCPB for compatible clients and
+The release provides both a signed MCPB for compatible clients and
 exact-version `npx` configuration for portability. `@latest`, global installs,
 and `curl | shell` are not reproducible defaults. See
 [Installation](docs/installation.md) for the release policy and client-specific
