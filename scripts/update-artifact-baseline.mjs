@@ -18,6 +18,28 @@ if (process.versions.node !== BASELINE_NODE_VERSION) {
 
 const root = process.cwd();
 const npmCli = resolveNpmCli("npm");
+
+// The SBOM embeds the generating npm client's identity, so a baseline made
+// with another npm version cannot match the release workflow's audited
+// client even after canonicalization.
+const BASELINE_NPM_VERSION = "12.0.1";
+{
+  const observedNpmVersion = runPortableCommandSync(
+    npmCli.command,
+    [...npmCli.argumentPrefix, "--version"],
+    {
+      cwd: root,
+      label: "The npm version probe",
+      maxBuffer: 1024 * 1024,
+      timeout: 60_000,
+    },
+  ).trim();
+  if (observedNpmVersion !== BASELINE_NPM_VERSION) {
+    throw new Error(
+      `Artifact baselines must be generated with npm ${BASELINE_NPM_VERSION} (the audited release client); this is npm ${observedNpmVersion}. Activate it first: npm install --global npm@${BASELINE_NPM_VERSION} --ignore-scripts.`,
+    );
+  }
+}
 const mcpbCli = resolveNodeEntrypoint(
   path.join(root, "node_modules", "@anthropic-ai", "mcpb", "dist", "cli", "cli.js"),
   "MCPB",

@@ -147,6 +147,6 @@
   },
   "release": {
     "serverJsonSha256": "c63e49cac279b4767857f7b4ad2a0d1ce470dda0203b68e97625b00cd54104f0",
-    "sbomCanonicalSha256": "7cc5fcfa32c1443e8b0c2f3ef8ab586f0005309ab9699cc2c7c5c99ce717c776"
+    "sbomCanonicalSha256": "9ac23007eb52acc4363cc1decf12950effbf183942a3431349c1f8351116931f"
   }
 }
