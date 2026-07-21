@@ -6,6 +6,12 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- npm publication is now exclusively GitHub OIDC trusted publishing: the
+  v0.1.0 first-publish bootstrap token binding was removed from the release
+  workflow, and the release policy fails closed on any npm token reference.
+
 ## [0.1.0] - 2026-07-20
 
 ### Added

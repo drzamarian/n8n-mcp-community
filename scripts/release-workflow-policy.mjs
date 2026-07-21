@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { parseAllDocuments, stringify } from "yaml";
 
 const EXPECTED_RELEASE_SEMANTIC_SHA256 =
-  "9977969e2c0f4b6936e6fdb08c30639187e07001ed88c14eddf9a6403ab43c60";
+  "35efd5b8f69260497f9882f81a1276982bffbc517359490e7a40c5d3c8c64cc6";
 
 function fail(message) {
   throw new Error(message);
@@ -168,6 +168,12 @@ export function verifyReleaseWorkflow(workflow, enforceSemanticHash = true) {
   ) {
     fail("Release workflow differs from the complete reviewed semantic specification.");
   }
+  // npm publication is OIDC trusted publishing only. The v0.1.0 first-publish
+  // bootstrap token was revoked; any npm token reference anywhere in the
+  // workflow (env, comments, or scripts) is a policy violation.
+  if (/NODE_AUTH_TOKEN|NPM_TOKEN|npm_token/i.test(workflow)) {
+    fail("The release workflow must not reference npm tokens; publication is OIDC-only.");
+  }
   const jobs = record(document.jobs, "Release jobs");
   const expectedJobs = ["build-candidate", "publish-release", "validate-dispatch"];
   if (JSON.stringify(Object.keys(jobs).sort()) !== JSON.stringify(expectedJobs)) {
@@ -282,9 +288,6 @@ export function verifyReleaseWorkflow(workflow, enforceSemanticHash = true) {
     JSON.stringify(record(publication.env, "npm publication environment")) !==
     JSON.stringify({
       APPROVED_NPM_TARBALL_SHA256: "${{ inputs.npm_tarball_sha256 }}",
-      // First-publish bootstrap: npm cannot pin a trusted publisher on a
-      // package that does not exist yet. Revoked after v0.1.0.
-      NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}",
     })
   ) {
     fail("The npm publication step must rebind the separately approved tarball digest.");

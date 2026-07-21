@@ -212,10 +212,6 @@ jobs:
         shell: bash
         env:
           APPROVED_NPM_TARBALL_SHA256: ${{ inputs.npm_tarball_sha256 }}
-          # Bootstrap for the first publish only: npm cannot pin a trusted
-          # publisher on a package that does not exist yet. After v0.1.0 the
-          # trusted publisher takes over and this token is revoked.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
           mapfile -t packages < <(find ./release-artifacts -maxdepth 1 -type f -name '*.tgz' -print)
