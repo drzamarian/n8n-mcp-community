@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { parseAllDocuments, stringify } from "yaml";
 
 const EXPECTED_RELEASE_SEMANTIC_SHA256 =
-  "0d87998e6424a935e65c261fa8767f8b46f3bf5c3735c42a11cf0982a5f5d710";
+  "e7d971aa3b71111366d05e22e76fd892807b8485de480a6efff7675b420b87fa";
 
 function fail(message) {
   throw new Error(message);
@@ -278,7 +278,12 @@ export function verifyReleaseWorkflow(workflow, enforceSemanticHash = true) {
   }
   if (
     JSON.stringify(record(publication.env, "npm publication environment")) !==
-    JSON.stringify({ APPROVED_NPM_TARBALL_SHA256: "${{ inputs.npm_tarball_sha256 }}" })
+    JSON.stringify({
+      APPROVED_NPM_TARBALL_SHA256: "${{ inputs.npm_tarball_sha256 }}",
+      // First-publish bootstrap: npm cannot pin a trusted publisher on a
+      // package that does not exist yet. Revoked after v0.1.0.
+      NODE_AUTH_TOKEN: "${{ secrets.NPM_TOKEN }}",
+    })
   ) {
     fail("The npm publication step must rebind the separately approved tarball digest.");
   }
