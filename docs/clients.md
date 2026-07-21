@@ -1,8 +1,8 @@
 # MCP client configuration
 
-The pre-release candidate uses standard MCP over stdio. No client-specific
-support claim is made until the final npm and MCPB artifacts complete an
-end-to-end client matrix.
+The server uses standard MCP over stdio. No client-specific support claim is
+made until the published npm and MCPB artifacts complete an end-to-end client
+matrix.
 
 ## Generic source configuration
 
@@ -30,10 +30,9 @@ only in the client's environment or secret UI, and restart the client after any
 configuration change. The exact file location and outer JSON shape belong to
 the client and may differ from this generic fragment.
 
-## Planned exact-version npx configuration
+## Exact-version npx configuration
 
-After the first npm release, a portable configuration will run the reviewed
-version explicitly:
+The portable configuration runs the reviewed published version explicitly:
 
 ```json
 {
@@ -51,9 +50,9 @@ version explicitly:
 }
 ```
 
-Do not use this until `0.1.0` is published and verified. Do not replace the
-exact version with `@latest`; explicit pins make review, rollback, and incident
-response deterministic.
+Verify the published provenance attestation before first use. Do not replace
+the exact version with `@latest`; explicit pins make review, rollback, and
+incident response deterministic.
 
 On Windows, a client that cannot launch `npx` directly may use:
 
@@ -64,13 +63,13 @@ On Windows, a client that cannot launch `npx` directly may use:
 }
 ```
 
-This Windows form is planned, not yet release-tested.
+This Windows form is not yet release-tested.
 
-## Planned MCPB path
+## MCPB path
 
 Compatible clients may be able to install the signed MCPB without editing JSON.
-The bundle will contain the same compiled server and will request the same four
-settings documented in [Configuration](configuration.md). It will not contain
+The bundle contains the same compiled server and requests the same four
+settings documented in [Configuration](configuration.md). It does not contain
 an API key or instance URL.
 
 The project will publish client-specific MCPB instructions only after testing

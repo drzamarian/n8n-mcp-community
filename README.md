@@ -7,15 +7,18 @@ executions, credentials, tags, users, diagnostics, and instance metadata. The
 server starts offline, defaults to read-only, uses the supported n8n Public API,
 and never sends workflow data to an external AI provider.
 
-> **v0.1.0:** install the exact published version or use a source checkout. See
-> [Installation](docs/installation.md) for the pinned npm and signed MCPB
-> options.
+> **v0.1.0 is published:** exact-version npm
+> ([`n8n-mcp-community@0.1.0`](https://www.npmjs.com/package/n8n-mcp-community)
+> with provenance attestations), a signed MCPB in the
+> [v0.1.0 release](https://github.com/drzamarian/n8n-mcp-community/releases/tag/v0.1.0),
+> and the MCP Registry entry `io.github.drzamarian/n8n-mcp-community`. See
+> [Installation](docs/installation.md).
 
 [Read the synthetic terminal demo transcript](docs/demo-transcript.md). It shows
-the planned exact-version startup, 44-tool inventory, and local Introspect
+the exact-version startup, 44-tool inventory, and local Introspect
 diagnostics using only synthetic identifiers and documented output shapes.
 
-[![Animated synthetic terminal demonstration showing the planned exact-version startup, MCP inventory, and local Introspect result](docs/assets/demo.gif)](docs/demo-transcript.md)
+[![Animated synthetic terminal demonstration showing the exact-version startup, MCP inventory, and local Introspect result](docs/assets/demo.gif)](docs/demo-transcript.md)
 
 ## Why this project
 
@@ -57,10 +60,38 @@ repository-pinned MCPB signing identity, a human artifact-baseline receipt,
 tag-scoped protected-environment approval, and an externally signed MCPB
 handoff verified byte for byte against the reviewed unsigned candidate.
 
-## Quick start from source
+## Quick start
 
 Requirements: Node.js 22 or 24, npm, a self-hosted n8n Community Edition
 instance, and an n8n Public API key with only the permissions you need.
+
+Configure your MCP client to run the published exact version:
+
+```json
+{
+  "mcpServers": {
+    "n8n-community": {
+      "command": "npx",
+      "args": ["--yes", "n8n-mcp-community@0.1.0"],
+      "env": {
+        "N8N_API_URL": "https://n8n.example.com",
+        "N8N_API_KEY": "replace-with-a-dedicated-api-key",
+        "N8N_MCP_MODE": "read-only"
+      }
+    }
+  }
+}
+```
+
+Restart the MCP client and confirm exactly 44 tools, 5 resources, and 4
+prompts. Compatible desktop clients can instead install the signed MCPB from
+the
+[v0.1.0 release](https://github.com/drzamarian/n8n-mcp-community/releases/tag/v0.1.0);
+verify its checksum against the release `SHA256SUMS` first.
+
+## Quick start from source
+
+Requirements: Node.js 22 or 24, npm, and a Git checkout of this repository.
 
 ```bash
 npm ci

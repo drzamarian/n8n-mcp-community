@@ -2,16 +2,16 @@
 
 ## Availability
 
-| Method              | Current status                    | Intended use                                              |
-| ------------------- | --------------------------------- | --------------------------------------------------------- |
-| Source checkout     | Available for local evaluation    | Contributors and pre-release review                       |
-| Exact-version `npx` | Planned for the first npm release | Portable configuration across MCP clients                 |
-| Signed MCPB         | Planned for the first release     | Easiest installation in compatible desktop clients        |
-| Homebrew            | Not planned for v0.1.0            | No formula exists and Homebrew does not update MCPB files |
+| Method              | Current status                           | Intended use                                              |
+| ------------------- | ---------------------------------------- | --------------------------------------------------------- |
+| Source checkout     | Available for local evaluation           | Contributors and release review                           |
+| Exact-version `npx` | Published: `n8n-mcp-community@0.1.0`     | Portable configuration across MCP clients                 |
+| Signed MCPB         | Published with the v0.1.0 GitHub release | Easiest installation in compatible desktop clients        |
+| Homebrew            | Not planned for v0.1.0                   | No formula exists and Homebrew does not update MCPB files |
 
-The source, npm package, and MCPB must expose the same 44-tool runtime. Until a
-signed release exists, do not configure an unpublished package name as though it
-were available.
+The source, npm package, and MCPB expose the same 44-tool runtime. Configure
+only an exact published version; never configure an unpublished version as
+though it were available.
 
 ## Source installation
 
@@ -39,9 +39,9 @@ npm run check
 
 Use a release tag rather than `dev` after public releases begin.
 
-## Exact-version npx after release
+## Exact-version npx
 
-The recommended portable configuration will pin a reviewed version:
+The recommended portable configuration pins the reviewed published version:
 
 ```json
 {
@@ -59,8 +59,10 @@ The recommended portable configuration will pin a reviewed version:
 }
 ```
 
-This example becomes valid only after `0.1.0` is published and its provenance
-is verified. Windows clients that do not launch `npx` directly may use
+`0.1.0` is published with npm provenance attestations that link the package to
+this repository's release workflow; verify the attestation on the npm package
+page or with `npm audit signatures` before first use. Windows clients that do
+not launch `npx` directly may use
 `"command": "cmd"` with
 `"args": ["/c", "npx", "--yes", "n8n-mcp-community@0.1.0"]`.
 
@@ -72,15 +74,18 @@ restore the last known-good exact version and restart the MCP client.
 `npx` may download the pinned package on first use. Normal npm cache behavior
 applies; this project does not add a second updater.
 
-## MCPB after release
+## Signed MCPB
 
-The MCPB manifest declares Linux, macOS, and Windows because the bundle contains
-the same portable Node.js stdio server on each platform. A signed release will
-not claim client compatibility on any operating system until installation,
-upgrade, rollback, and removal have passed there. Once verified, MCPB is intended
-to be the simplest path for non-developers: inspect the signature and checksum,
-open the bundle in a compatible client, supply connection settings through that
-client's secret configuration UI, and confirm the 44-tool inventory.
+The signed MCPB is published as a
+[v0.1.0 release asset](https://github.com/drzamarian/n8n-mcp-community/releases/tag/v0.1.0)
+together with `SHA256SUMS` and an SBOM. The manifest declares Linux, macOS, and
+Windows because the bundle contains the same portable Node.js stdio server on
+each platform; the release does not claim client compatibility on an operating
+system until installation, upgrade, rollback, and removal have passed there.
+MCPB is intended to be the simplest path for non-developers: inspect the
+signature and checksum, open the bundle in a compatible client, supply
+connection settings through that client's secret configuration UI, and confirm
+the 44-tool inventory.
 
 An MCPB is not a Homebrew package. Homebrew cannot update it unless a separate
 formula is created, and no formula is planned for v0.1.0. MCPB updates will be

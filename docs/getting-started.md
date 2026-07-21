@@ -1,7 +1,7 @@
 # Getting started
 
-This guide runs the pre-release source candidate as a local MCP stdio server.
-No npm package or MCPB has been published yet.
+This guide runs a source checkout as a local MCP stdio server. The published
+npm and signed MCPB routes are documented in [Installation](installation.md).
 
 ## What you need
 

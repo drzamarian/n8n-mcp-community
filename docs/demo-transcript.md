@@ -20,8 +20,8 @@ schema 1.0.0 | engine 2.0.0 | status: complete
 findings: 0 critical | 0 high | 0 medium | 0 low | 0 info
 ```
 
-The version command is the planned exact-version installation route for v0.1.0;
-it becomes valid only after that version is published and verified. The initialization and tool call lines represent MCP protocol
+The version command is the published exact-version installation route for
+v0.1.0. The initialization and tool call lines represent MCP protocol
 events, not shell commands. The Introspect output is the documented empty
 finding example: the real direct structured result also includes coverage, rule
 outcomes, and limitations. Its fields remain untrusted n8n-derived diagnostics

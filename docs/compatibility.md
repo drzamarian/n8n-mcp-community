@@ -1,8 +1,7 @@
 # Compatibility
 
-Compatibility claims are evidence-bound. This pre-release document separates
-completed local release-candidate evidence from the signing, client-matrix, and
-publication gates that remain closed.
+Compatibility claims are evidence-bound. This document separates completed
+release evidence from the client-matrix gates that remain open.
 
 ## Current source-candidate evidence
 
@@ -13,8 +12,8 @@ publication gates that remain closed.
 | MCP transport          | stdio inventory verified as 44 tools, 5 resources, 4 prompts |
 | macOS on Apple silicon | Development and local verification environment               |
 | Linux and Windows      | No public release claim yet                                  |
-| npm artifact           | Packed, clean-installed, and inspected locally; unpublished  |
-| MCPB artifact          | Deterministic unsigned bundle verified locally; unpublished  |
+| npm artifact           | Published as `n8n-mcp-community@0.1.0` with provenance       |
+| MCPB artifact          | Signed and published with the v0.1.0 GitHub release          |
 
 The package declares Node.js `>=22.0.0`. That engine range is an acceptance
 floor, not evidence that every later major has completed the release matrix.
@@ -26,8 +25,8 @@ The v0.1.0 floor candidate is n8n Community Edition 2.30.5, with 2.30.7 as the
 current comparison target. The compiled public 44-tool candidate passed fresh,
 disposable lifecycles on both versions with synthetic fixtures, API-key
 revocation, resource cleanup, enforced candidate-process egress isolation, and
-zero container or network residue. The project remains pre-release and
-unsupported until the remaining release gates close.
+zero container or network residue. Linux and Windows client-lifecycle claims
+remain gated on the release matrix.
 
 The server uses supported Public API routes and `/healthz`. It does not rely on
 browser cookies, interactive `/rest` routes, paid project transfers, arbitrary
@@ -91,7 +90,7 @@ The protocol implementation is client-neutral stdio. A generic source
 configuration is documented now; client-specific support claims require an
 end-to-end launch, inventory readback, resource read, prompt retrieval, tool
 call, restart, upgrade, and removal test for the final release artifact. See
-[Clients](clients.md) for the current pre-release boundary.
+[Clients](clients.md) for the current client boundary.
 
 ## How compatibility will be accepted
 

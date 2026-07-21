@@ -1,18 +1,18 @@
 # Maintainer release handoff
 
 Publication is deliberately split so the MCPB signing key never enters GitHub,
-GitHub Actions, npm, or the package. This procedure is inactive until Walter has
-approved the public signing identity, certificate chain, and key-custody controls.
-The tracked `release/mcpb-signing-policy.json` therefore remains explicitly
-`unconfigured` and blocks publication.
+GitHub Actions, npm, or the package. This procedure became active when the
+maintainer approved the public signing identity, certificate chain, and
+key-custody controls for v0.1.0; the tracked
+`release/mcpb-signing-policy.json` is configured with the exact leaf
+fingerprint and public trust-chain digests.
 
-The current pre-release verifier deliberately requires `package.private: true`.
-After Walter explicitly authorizes publication, a separately reviewed release
-transition must set `private: false`, activate the signing policy with the exact
-leaf fingerprint and public trust-chain PEM digests, and contain those public
-PEM files on the same commit that will receive the annotated release tag. No
-candidate tag created while the private invariant is active can be reused as a
-release tag.
+The verifier deliberately requires `package.private: true` during private
+development. The reviewed v0.1.0 release transition set `private: false`,
+activated the signing policy with the exact leaf fingerprint and public
+trust-chain PEM digests, and contained those public PEM files on the same
+commit that received the annotated release tag. No candidate tag created while
+the private invariant is active can be reused as a release tag.
 
 The only permitted public certificate paths are
 `release/mcpb-trust-anchor.pem` and the sequential

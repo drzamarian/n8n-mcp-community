@@ -14,9 +14,9 @@ and contract-test inventories are checked together.
 
 ## What is the easiest installation method?
 
-For a compatible desktop client, the planned signed MCPB will be the easiest.
-Exact-version `npx` will be the portable alternative. Neither has been published
-yet, so source checkout is the only current evaluation path.
+For a compatible desktop client, the signed MCPB from the v0.1.0 GitHub
+release is the easiest. Exact-version `npx` (`n8n-mcp-community@0.1.0`) is the
+portable alternative. A source checkout remains the contributor path.
 
 ## Will I need both MCPB and npx?
 

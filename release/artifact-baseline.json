@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "packageVersion": "0.1.0",
   "npm": {
-    "sha256": "99de9735dd238c6bd0758170397af06aeea364ac6f25b7c85eb7d8d3e70c7c1c",
+    "sha256": "cb9480d4c09b4df9285f6530091b0a3a82758fb13f37a10f27b0e9e0b2fdcc4c",
     "fileCount": 59,
     "files": [
       "CHANGELOG.md",
@@ -147,6 +147,6 @@
   },
   "release": {
     "serverJsonSha256": "f9aedc1bd2a40ac430818b55c549eb85993f047bd509c081b80ff3f86c53dad9",
-    "sbomCanonicalSha256": "06c1cf4707e4bf3f01c755c52315f472ea2d92802d00c90d0b8e9a9197284efb"
+    "sbomCanonicalSha256": "84cb0347d99c5f08c58703549353abe9c0698a9f7a99b631078dac8e2065b2ae"
   }
 }
