@@ -218,7 +218,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
-          mapfile -t packages < <(find release-artifacts -maxdepth 1 -type f -name '*.tgz' -print)
+          mapfile -t packages < <(find ./release-artifacts -maxdepth 1 -type f -name '*.tgz' -print)
           test "${#packages[@]}" -eq 1
           test "$(sha256sum "${packages[0]}" | cut -d ' ' -f 1)" = "${APPROVED_NPM_TARBALL_SHA256}"
           npm publish "${packages[0]}" --access public --provenance --ignore-scripts

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { parseAllDocuments, stringify } from "yaml";
 
 const EXPECTED_RELEASE_SEMANTIC_SHA256 =
-  "e7d971aa3b71111366d05e22e76fd892807b8485de480a6efff7675b420b87fa";
+  "632d0da434258a360d3fa300d3446ddf76034a8bc617d8960bdafb710f66a86b";
 
 function fail(message) {
   throw new Error(message);
@@ -111,7 +111,9 @@ const SIGNED_VERIFIER_RUN = Object.freeze([
 
 const PUBLISH_RUN = Object.freeze([
   "set -euo pipefail",
-  "mapfile -t packages < <(find release-artifacts -maxdepth 1 -type f -name '*.tgz' -print)",
+  // The tarball path must carry a ./ prefix: npm parses a bare name/name
+  // argument as a github: specifier, not a local file.
+  "mapfile -t packages < <(find ./release-artifacts -maxdepth 1 -type f -name '*.tgz' -print)",
   'test "${#packages[@]}" -eq 1',
   'test "$(sha256sum "${packages[0]}" | cut -d \' \' -f 1)" = "${APPROVED_NPM_TARBALL_SHA256}"',
   'npm publish "${packages[0]}" --access public --provenance --ignore-scripts',
