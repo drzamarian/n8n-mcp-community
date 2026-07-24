@@ -23,18 +23,27 @@ const MUTABLE_NODE_ROOT_SET = new Set<string>(MUTABLE_NODE_ROOTS);
 // A factory rather than a shared instance: when one Zod instance appears in two properties of the
 // same tool, the SDK's tools/list conversion dedupes the second occurrence into a "$ref", which
 // not every MCP client resolves. Fresh instances keep every published schema fully inline.
-export const identifier = (): z.ZodString =>
-  z.string().regex(IDENTIFIER, "Use 1-128 ASCII letters, digits, underscores, or hyphens.");
+export const identifier = (
+  description = "Stable n8n identifier: 1-128 ASCII letters, digits, underscores, or hyphens.",
+): z.ZodString =>
+  z
+    .string()
+    .regex(IDENTIFIER, "Use 1-128 ASCII letters, digits, underscores, or hyphens.")
+    .describe(description);
 export const cursor = z
   .string()
   .min(1)
   .max(2_048)
-  .refine(
-    (value) => !CONTROL_CHARACTERS.test(value),
-    "Cursor must not contain control characters.",
-  );
+  .refine((value) => !CONTROL_CHARACTERS.test(value), "Cursor must not contain control characters.")
+  .describe("Opaque cursor returned by the previous page; omit it to start from the first page.");
 export const pageLimit = (maximum = 100, defaultValue = maximum) =>
-  z.number().int().min(1).max(maximum).default(defaultValue);
+  z
+    .number()
+    .int()
+    .min(1)
+    .max(maximum)
+    .default(defaultValue)
+    .describe(`Maximum records to request in this page (1-${maximum}; default ${defaultValue}).`);
 export const confirmation = z.string().min(1).max(300);
 export const tagName = z
   .string()
@@ -44,7 +53,8 @@ export const tagName = z
   .refine(
     (value) => !CONTROL_CHARACTERS.test(value),
     "Tag name must not contain control characters.",
-  );
+  )
+  .describe("Workflow tag name: 1-24 characters, without surrounding whitespace or controls.");
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);

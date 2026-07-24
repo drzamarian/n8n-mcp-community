@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { parseAllDocuments, stringify } from "yaml";
 
 const EXPECTED_RELEASE_SEMANTIC_SHA256 =
-  "35efd5b8f69260497f9882f81a1276982bffbc517359490e7a40c5d3c8c64cc6";
+  "c3e727a218b2a4d15c6a2f60d2b7b0194e4b6c78b3efa95bfe5d4813ce5cdb72";
 
 function fail(message) {
   throw new Error(message);
@@ -80,6 +80,7 @@ const APPROVAL_RUN = Object.freeze([
   'test "$(git cat-file -t "${RELEASE_TAG}")" = "tag"',
   'test "$(git rev-list -n 1 "${RELEASE_TAG}")" = "${GITHUB_SHA}"',
   'test "$(node -p \'require("./package.json").private === true ? "private" : "public"\')" = "public"',
+  'test "$(node -p \'require("./package.json").releaseState\')" = "candidate"',
   'test "$(node -p \'require("./release/mcpb-signing-policy.json").status\')" = "active"',
   "(",
   "cd release-artifacts",
@@ -125,6 +126,7 @@ const VALIDATE_DISPATCH_RUN = Object.freeze([
   'test "$(git cat-file -t "${RELEASE_TAG}")" = "tag"',
   'version="$(node -p \'require("./package.json").version\')"',
   'test "${RELEASE_TAG}" = "v${version}"',
+  'test "$(node -p \'require("./package.json").releaseState\')" = "candidate"',
   'test "$(git rev-list -n 1 "${RELEASE_TAG}")" = "${GITHUB_SHA}"',
   "git fetch --no-tags origin main:refs/remotes/origin/main",
   'git merge-base --is-ancestor "${GITHUB_SHA}" refs/remotes/origin/main',

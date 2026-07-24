@@ -58,12 +58,16 @@ jobs:
       - name: Install exact dependencies without lifecycle scripts
         run: npm ci --ignore-scripts
       - name: Run the complete verification gate
+        if: github.event_name != 'pull_request'
         shell: bash
         env:
           N8N_MCP_APPROVAL_KEY: ${{ secrets.N8N_MCP_APPROVAL_KEY }}
         run: |
           (umask 077 && printf '%s' "${N8N_MCP_APPROVAL_KEY}" > "${RUNNER_TEMP}/approval.key")
           N8N_MCP_APPROVAL_KEY_FILE="${RUNNER_TEMP}/approval.key" npm run verify
+      - name: Run the keyless contributor verification gate
+        if: github.event_name == 'pull_request'
+        run: npm run verify:contributor
 
   packed-smoke:
     name: Packed smoke on ${{ matrix.os }}
@@ -89,12 +93,16 @@ jobs:
       - name: Install exact dependencies without lifecycle scripts
         run: npm ci --ignore-scripts
       - name: Build, install, and inspect the npm artifact
+        if: github.event_name != 'pull_request'
         shell: bash
         env:
           N8N_MCP_APPROVAL_KEY: ${{ secrets.N8N_MCP_APPROVAL_KEY }}
         run: |
           (umask 077 && printf '%s' "${N8N_MCP_APPROVAL_KEY}" > "${RUNNER_TEMP}/approval.key")
           N8N_MCP_APPROVAL_KEY_FILE="${RUNNER_TEMP}/approval.key" npm run check:package
+      - name: Build, install, and inspect the npm artifact without maintainer approval
+        if: github.event_name == 'pull_request'
+        run: npm run check:package:contributor
 
   dependency-audit:
     name: Dependency audit with npm 12.0.1

@@ -49,6 +49,12 @@ interface MetadataPolicyModule {
       otherProjectFileCount: number;
     },
   ): void;
+  changelogDescribesPackageState(packageJson: unknown, changelog: string): boolean;
+}
+
+interface PublicBoundaryPolicyModule {
+  isForbiddenPublicPath(file: string, allowedCertificates?: ReadonlySet<string>): boolean;
+  isForbiddenMcpbProjectPath(file: string): boolean;
 }
 
 interface OfficialUrlsModule {
@@ -347,6 +353,91 @@ test("MCPB baseline file-count binding rejects a tampered dependency count", asy
       }),
     /do not sum to the total/,
   );
+});
+
+test("release metadata keeps the reviewed candidate immutable across publication", async () => {
+  const policy = await loadScript<MetadataPolicyModule>("release-metadata-policy.mjs");
+  const candidate = `## [0.1.2] - Frozen release candidate
+
+Version 0.1.2 is a frozen release candidate. Availability is established only by matching external readbacks; this immutable entry is not rewritten after publication.
+
+[Unreleased]: #unreleased
+[0.1.2]: #012---frozen-release-candidate
+`;
+  assert.equal(
+    policy.changelogDescribesPackageState(
+      { version: "0.1.2", private: false, releaseState: "candidate" },
+      candidate,
+    ),
+    true,
+  );
+  assert.equal(
+    policy.changelogDescribesPackageState(
+      { version: "0.1.2", private: false, releaseState: "released" },
+      candidate,
+    ),
+    false,
+  );
+});
+
+test("private Glama evidence is forbidden from Git and both MCPB verification modes", async () => {
+  const policy = await loadScript<PublicBoundaryPolicyModule>("public-boundary-policy.mjs");
+  for (const file of [
+    "glama/private-review.png",
+    "nested/glama/private-review.json",
+    "server/glama/private-review.png",
+  ]) {
+    assert.equal(policy.isForbiddenPublicPath(file), true, `${file} must be private`);
+    assert.equal(policy.isForbiddenMcpbProjectPath(file), true, `${file} must not enter MCPB`);
+  }
+  assert.equal(policy.isForbiddenMcpbProjectPath("server/src/private.ts"), true);
+  assert.equal(policy.isForbiddenMcpbProjectPath("server/test/private.test.js"), true);
+  assert.equal(policy.isForbiddenMcpbProjectPath("server/dist/index.js"), false);
+});
+
+test("contributor and source instructions use the keyless gate and release provenance is current", async () => {
+  const [template, provenance, installation, readme, gettingStarted, clients, troubleshooting] =
+    await Promise.all([
+      readFile(path.join(process.cwd(), ".github", "pull_request_template.md"), "utf8"),
+      readFile(path.join(process.cwd(), "docs", "provenance.md"), "utf8"),
+      readFile(path.join(process.cwd(), "docs", "installation.md"), "utf8"),
+      readFile(path.join(process.cwd(), "README.md"), "utf8"),
+      readFile(path.join(process.cwd(), "docs", "getting-started.md"), "utf8"),
+      readFile(path.join(process.cwd(), "docs", "clients.md"), "utf8"),
+      readFile(path.join(process.cwd(), "docs", "troubleshooting.md"), "utf8"),
+    ]);
+  assert.match(template, /npm run verify:contributor/);
+  assert.match(template, /maintainer.*keyed `npm run verify` gate/i);
+  assert.doesNotMatch(template, /I ran `npm run verify` or explained/);
+  assert.match(provenance, /Every release candidate must carry a runtime/);
+  assert.doesNotMatch(provenance, /The first public release will attach/);
+  assert.equal((installation.match(/^npm run verify:contributor$/gm) ?? []).length, 2);
+  for (const [name, sourceGuide] of [
+    ["README", readme],
+    ["installation guide", installation],
+    ["getting-started guide", gettingStarted],
+    ["client guide", clients],
+    ["troubleshooting guide", troubleshooting],
+  ] as const) {
+    assert.match(
+      sourceGuide,
+      /npm run verify:contributor/,
+      `${name} must direct source users through the keyless contributor gate`,
+    );
+    assert.doesNotMatch(
+      sourceGuide,
+      /npm run (?:build|check)(?![:\w-])/,
+      `${name} must not substitute a partial source gate`,
+    );
+  }
+});
+
+test("credential-schema and audit documentation mirror their discriminated contracts", async () => {
+  const toolsGuide = await readFile(path.join(process.cwd(), "docs", "tools.md"), "utf8");
+  assert.match(toolsGuide, /additionalProperties: false.*type: "object".*typed `properties`/s);
+  assert.match(toolsGuide, /Credentials Risk Report.*"risk": "credentials"/s);
+  assert.doesNotMatch(toolsGuide, /"fields": \[\{ "name": "name"/);
+  assert.doesNotMatch(toolsGuide, /"data": \{ "risk": \[\] \}/);
 });
 
 test("official-URL manifest parity matches the runtime source and catches drift", async () => {

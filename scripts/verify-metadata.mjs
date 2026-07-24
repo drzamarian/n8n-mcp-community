@@ -33,6 +33,7 @@ const expectedEnvironment = [
 verifyReleaseMetadataPolicySelfTest();
 if (
   (packageJson.private !== true && packageJson.private !== false) ||
+  packageJson.releaseState !== "candidate" ||
   packageJson.mcpName !== registryName ||
   !isSemanticVersion(packageJson.version) ||
   packageJson.repository?.url !== `${repositoryUrl}.git` ||
@@ -42,8 +43,8 @@ if (
 ) {
   throw new Error("package.json release metadata differs from the approved package identity.");
 }
-if (!changelogDescribesPackageState(packageJson, changelog, repositoryUrl)) {
-  throw new Error("CHANGELOG.md does not describe the exact private or publishable package state.");
+if (!changelogDescribesPackageState(packageJson, changelog)) {
+  throw new Error("CHANGELOG.md does not describe the exact immutable release candidate.");
 }
 if (
   serverJson.$schema !==
@@ -97,6 +98,7 @@ console.log(
       registryPackages: serverJson.packages.length,
       environmentVariables: expectedEnvironment.length,
       private: packageJson.private === true,
+      releaseState: packageJson.releaseState,
       status: "pass",
     },
     null,

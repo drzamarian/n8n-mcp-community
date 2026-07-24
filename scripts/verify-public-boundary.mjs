@@ -5,6 +5,7 @@ import path from "node:path";
 import process from "node:process";
 import {
   allowedPublicCertificatePaths,
+  isForbiddenMcpbProjectPath,
   isForbiddenPublicPath,
   PUBLIC_CERTIFICATE_NAMES,
 } from "./public-boundary-policy.mjs";
@@ -231,6 +232,7 @@ const ignoredSamples = [
   ".env",
   ".envrc",
   ".env.local",
+  "glama/private-review.png",
   ".npmrc",
   ".opencode/state.json",
   ".secrets/token",
@@ -251,6 +253,7 @@ const ignoredSamples = [
   "nested/.agents/state.json",
   "nested/.audit/evidence.txt",
   "nested/.env.local",
+  "nested/glama/private-review.png",
   "nested/.envrc",
   "nested/.npmrc",
   "nested/.semgrep-rules/rule.yml",
@@ -316,6 +319,8 @@ if (
   isForbiddenHistoricalPath(`release/${PUBLIC_CERTIFICATE_NAMES.trustAnchor}`, true) ||
   !isForbiddenPublicPath(".envrc") ||
   !isForbiddenPublicPath("nested/.environment") ||
+  !isForbiddenPublicPath("glama/private-review.png") ||
+  !isForbiddenPublicPath("nested/glama/private-review.png") ||
   isForbiddenPublicPath(".env.example") ||
   !isForbiddenPublicPath("nested/.env.example") ||
   !isForbiddenPublicPath("artifact.tgz") ||
@@ -331,7 +336,11 @@ if (
   !isForbiddenPublicPath("release/private.p8", syntheticAllowed) ||
   !isForbiddenPublicPath("release/private.ppk", syntheticAllowed) ||
   !isForbiddenPublicPath("release/private.asc", syntheticAllowed) ||
-  !isForbiddenPublicPath("release/private.gpg", syntheticAllowed)
+  !isForbiddenPublicPath("release/private.gpg", syntheticAllowed) ||
+  !isForbiddenMcpbProjectPath("server/src/private.ts") ||
+  !isForbiddenMcpbProjectPath("server/test/private.test.js") ||
+  !isForbiddenMcpbProjectPath("server/glama/private-review.png") ||
+  isForbiddenMcpbProjectPath("server/dist/index.js")
 ) {
   throw new Error("Public-boundary policy self-test failed.");
 }

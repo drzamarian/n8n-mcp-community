@@ -30,9 +30,11 @@
 **/.env*
 !/.env.example
 /.audit/
+/glama/
 /sdds/
 /sdd/
 **/.audit/
+**/glama/
 **/sdds/
 **/sdd/
 /.npmrc

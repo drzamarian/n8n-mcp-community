@@ -3,7 +3,7 @@
   "manifest_version": "0.4",
   "name": "n8n-mcp-community",
   "display_name": "n8n MCP Community",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A security-focused MCP server for self-hosted n8n Community Edition.",
   "long_description": "Connect a local MCP client to a self-hosted n8n Community Edition instance through 44 bounded tools. The server defaults to read-only, uses the n8n Public API, and performs deterministic Introspect diagnostics without external AI.",
   "author": {

@@ -19,12 +19,12 @@ From the repository root:
 
 ```bash
 npm ci
-npm run check
+npm run verify:contributor
 ```
 
-The check builds the runtime, runs the complete test suite, verifies dependency
-licenses and notices, and confirms exact parity for 44 tools, 5 resources, and
-4 prompts.
+The keyless contributor gate builds the runtime, runs the complete test suite,
+verifies dependency licenses and notices, and confirms exact parity for 44
+tools, 5 resources, and 4 prompts.
 
 ## Validate local configuration
 

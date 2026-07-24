@@ -21,13 +21,21 @@ Node.js 22 and 24 are the supported development lines.
 
 ```bash
 npm ci
-npm run check
+npm run verify:contributor
 ```
 
-The complete gate covers formatting, dependency licenses and notices, strict
-TypeScript, the full automated test suite, a real stdio inventory check, and the
-production build.
+The keyless contributor gate covers formatting, dependency licenses and notices,
+strict TypeScript, the full automated test suite, real stdio inventories, package
+and MCPB construction, a disposable downstream-consumer audit, and the production
+build. It deliberately does not authenticate or approve the maintainer's exact
+artifact baseline.
 Run `npm run sbom > sbom.cdx.json` when reviewing dependency changes.
+
+Pull requests from forks run only this keyless gate; GitHub does not expose the
+operator-held artifact-approval secret to fork workflows. After review, the
+maintainer regenerates the exact baseline, approves it interactively, and runs
+`npm run verify`. Release and publication workflows accept only that keyed path;
+the contributor gate cannot authorize an artifact, tag, or release.
 
 ## Branch and commit conventions
 

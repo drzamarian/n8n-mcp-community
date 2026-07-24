@@ -44,6 +44,19 @@ signing policy, public certificate chain, and final source together. Any later
 source change requires a new release review; ordinary private development does
 not.
 
+`package.private` controls whether npm may publish the package; it is not
+publication evidence. `package.releaseState: "candidate"` is an immutable build
+guard for the exact reviewed bytes, not a mutable mirror of external registries.
+The tagged commit and published package keep that value permanently. Availability
+comes only from matching npm provenance, GitHub Release assets and signatures,
+and MCP Registry readbacks.
+
+Never change a published version from `candidate` to `released`, regenerate its
+baseline, or publish different bytes under the same version. After publication,
+the external readbacks are the release record and the frozen changelog entry
+remains time-invariant. Any source, metadata, or documentation correction that
+affects packaged bytes requires a new patch version and a new complete review.
+
 1. Create the exact annotated version tag from that approved public commit.
 2. Dispatch the release workflow from that tag with `publish` disabled.
 3. Review the retained `release-candidate-<tag>` artifact. It contains the npm
@@ -101,5 +114,9 @@ These services are not transactional. If a failure occurs after npm accepts the
 immutable version, stop. Read back every completed external state and use a
 separately reviewed continuation for only the missing service; do not retag,
 overwrite, or blindly rerun the full publication job.
+
+After all three channels agree, record the readbacks in the private release
+ledger. Do not edit the tagged commit, the same-version package metadata, or the
+approved baseline to mirror publication state.
 
 [Back to the documentation map](README.md)

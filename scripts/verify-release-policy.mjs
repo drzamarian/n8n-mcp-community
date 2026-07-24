@@ -2,6 +2,7 @@ import { createHash, X509Certificate } from "node:crypto";
 import { access, lstat, readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import { parseAllDocuments } from "yaml";
 import {
   verifyReleaseWorkflow,
   verifyReleaseWorkflowTamperCases,
@@ -67,11 +68,80 @@ async function verifyCertificateEntry(policyDirectory, entry, label, expectedPat
   if (!certificate.ca) fail(`${label} must be a CA certificate.`);
 }
 
-const [packageJson, policy, releaseWorkflow] = await Promise.all([
+const [packageJson, policy, releaseWorkflow, ciWorkflow] = await Promise.all([
   readFile(path.join(root, "package.json"), "utf8").then(JSON.parse),
   readFile(path.join(root, "release", "mcpb-signing-policy.json"), "utf8").then(JSON.parse),
   readFile(path.join(root, ".github", "workflows", "release.yml"), "utf8"),
+  readFile(path.join(root, ".github", "workflows", "ci.yml"), "utf8"),
 ]);
+
+function parseWorkflow(source, label) {
+  const documents = parseAllDocuments(source, { uniqueKeys: true });
+  if (documents.length !== 1 || documents[0].errors.length > 0) {
+    fail(`${label} must contain exactly one valid YAML document with unique keys.`);
+  }
+  const value = documents[0].toJSON();
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    fail(`${label} must be an object.`);
+  }
+  return value;
+}
+
+function verifyForkPullRequestBoundary(source) {
+  const workflow = parseWorkflow(source, "CI workflow");
+  const jobs = workflow.jobs;
+  if (!jobs || typeof jobs !== "object" || Array.isArray(jobs)) {
+    fail("CI workflow jobs must be an object.");
+  }
+  const secretGuard = "github.event_name != 'pull_request'";
+  const contributorGuard = "github.event_name == 'pull_request'";
+  let secretStepCount = 0;
+  for (const [jobName, jobValue] of Object.entries(jobs)) {
+    if (!jobValue || typeof jobValue !== "object" || Array.isArray(jobValue)) continue;
+    const steps = jobValue.steps;
+    if (!Array.isArray(steps)) continue;
+    for (const stepValue of steps) {
+      if (!stepValue || typeof stepValue !== "object" || Array.isArray(stepValue)) continue;
+      if (JSON.stringify(stepValue).includes("N8N_MCP_APPROVAL_KEY")) {
+        secretStepCount += 1;
+        if (stepValue.if !== secretGuard) {
+          fail(`${jobName} exposes an artifact-approval secret reference to pull requests.`);
+        }
+      }
+    }
+  }
+  if (secretStepCount !== 2) {
+    fail("CI must contain exactly two trusted-only artifact-approval steps.");
+  }
+  const verifySteps = jobs.verify?.steps;
+  const packedSteps = jobs["packed-smoke"]?.steps;
+  const hasExactStep = (steps, name, guard, run) =>
+    Array.isArray(steps) &&
+    steps.some(
+      (step) =>
+        step?.name === name &&
+        step.if === guard &&
+        step.run === run &&
+        !JSON.stringify(step).includes("N8N_MCP_APPROVAL_KEY"),
+    );
+  if (
+    !hasExactStep(
+      verifySteps,
+      "Run the keyless contributor verification gate",
+      contributorGuard,
+      "npm run verify:contributor",
+    ) ||
+    !hasExactStep(
+      packedSteps,
+      "Build, install, and inspect the npm artifact without maintainer approval",
+      contributorGuard,
+      "npm run check:package:contributor",
+    )
+  ) {
+    fail("Fork pull requests must retain both exact keyless contributor gates.");
+  }
+  return { secretStepCount, contributorSteps: 2 };
+}
 
 exactKeys(
   policy,
@@ -116,6 +186,7 @@ if (packageJson.private === true) {
 
 const releaseWorkflowReport = verifyReleaseWorkflow(releaseWorkflow);
 const structuralTamperCasesBlocked = verifyReleaseWorkflowTamperCases(releaseWorkflow);
+const forkPullRequestBoundary = verifyForkPullRequestBoundary(ciWorkflow);
 
 console.log(
   JSON.stringify(
@@ -126,6 +197,7 @@ console.log(
       pinnedNodeJobs: releaseWorkflowReport.pinnedNodeJobs,
       signedVerifierRemovalBlocked: releaseWorkflowReport.signedVerifierRemovalBlocked,
       structuralTamperCasesBlocked,
+      forkPullRequestBoundary,
       status: "pass",
     },
     null,

@@ -2,7 +2,7 @@
 
 **A security-focused Model Context Protocol server for self-hosted n8n Community Edition.**
 
-Connect an MCP client to the **full n8n management surface**: create, edit,
+Connect an MCP client to a **bounded 44-tool n8n Community Edition management surface**: create, edit,
 activate, and delete workflows, update individual nodes surgically, and manage
 executions, credentials, tags, users, diagnostics, and instance metadata — 44
 carefully bounded tools in total. Safety here is **progressive, not
@@ -11,12 +11,12 @@ and `unsafe` unlocks every tool with an exact per-call confirmation phrase for
 each destructive operation. It starts offline, uses the supported n8n Public
 API, and never sends workflow data to an external AI provider.
 
-> **v0.1.1 is published:** exact-version npm
-> ([`n8n-mcp-community@0.1.1`](https://www.npmjs.com/package/n8n-mcp-community)
-> with provenance attestations), a signed MCPB in the
-> [v0.1.1 release](https://github.com/drzamarian/n8n-mcp-community/releases/latest),
-> and the MCP Registry entry `io.github.drzamarian/n8n-mcp-community`. See
-> [Installation](docs/installation.md).
+> **Release evidence:** install only a version that appears consistently on
+> [npm](https://www.npmjs.com/package/n8n-mcp-community), the
+> [latest GitHub release](https://github.com/drzamarian/n8n-mcp-community/releases/latest),
+> and the MCP Registry entry `io.github.drzamarian/n8n-mcp-community`. A version
+> in the source tree remains a candidate until those external readbacks agree.
+> See [Installation](docs/installation.md).
 
 [Read the synthetic terminal demo transcript](docs/demo-transcript.md). It shows
 the exact-version startup, 44-tool inventory, and local Introspect
@@ -47,17 +47,22 @@ diagnostics using only synthetic identifiers and documented output shapes.
 The current source candidate has been verified with:
 
 - exactly **44 tools**, **5 resources**, and **4 prompts** over real stdio;
-- **271 passing tests** and the complete verification gate on Node.js 22.23.1
+- **291 passing tests** and the complete verification gate on Node.js 22.23.1
   and 24.18.0;
-- zero findings from Gitleaks, Semgrep, Trivy, and both production/full
-  `npm audit` runs; all three source scanners are reproduced in CI, with
-  immutable scanner/action identities;
+- zero findings from Gitleaks, Semgrep, Trivy, and both project-root
+  production/full `npm audit` runs; all three source scanners are reproduced in
+  CI, with immutable scanner/action identities;
+- a separate no-override consumer install that resolves the reviewed
+  `@hono/node-server@1.19.15` backport, accepts only an exact
+  GHSA-frvp-7c67-39w9 advisory or a fully clean advisory readback while registry
+  metadata converges, and proves the stdio runtime and exact 44/5/4 inventory;
 - a reproducible dependency-license gate covering 224 installed package paths;
 - bounded same-origin HTTP contracts and zero-request policy-denial tests;
 - all 44 compiled tool lifecycles on disposable n8n Community 2.30.5 and 2.30.7
   instances with egress isolation, revoked keys, cleanup, and zero residue; and
-- a clean-installed npm tarball plus a byte-reproducible unsigned MCPB with the
-  same compiled runtime and complete production dependency notices.
+- a reviewed offline npm-tarball installation under the project's committed
+  dependency policy, plus a byte-reproducible unsigned MCPB with the same
+  compiled runtime and complete production dependency notices.
 
 Publication proceeds only through the reviewed release procedure: the
 repository-pinned MCPB signing identity, a human artifact-baseline receipt,
@@ -69,14 +74,15 @@ handoff verified byte for byte against the reviewed unsigned candidate.
 Requirements: Node.js 22 or 24, npm, a self-hosted n8n Community Edition
 instance, and an n8n Public API key with only the permissions you need.
 
-Configure your MCP client to run the published exact version:
+First identify a version whose npm provenance and GitHub release assets you have
+verified, then replace `<VERIFIED_VERSION>` below. Keep the pin exact:
 
 ```json
 {
   "mcpServers": {
     "n8n-community": {
       "command": "npx",
-      "args": ["--yes", "n8n-mcp-community@0.1.1"],
+      "args": ["--yes", "n8n-mcp-community@<VERIFIED_VERSION>"],
       "env": {
         "N8N_API_URL": "https://n8n.example.com",
         "N8N_API_KEY": "replace-with-a-dedicated-api-key",
@@ -96,8 +102,7 @@ per-call confirmation phrase. See [Safety modes](#safety-modes).
 
 Restart the MCP client and confirm exactly 44 tools, 5 resources, and 4
 prompts. Compatible desktop clients can instead install the signed MCPB from
-the
-[v0.1.1 release](https://github.com/drzamarian/n8n-mcp-community/releases/latest);
+the [latest verified release](https://github.com/drzamarian/n8n-mcp-community/releases/latest);
 verify its checksum against the release `SHA256SUMS` first.
 
 ## Quick start from source
@@ -106,7 +111,7 @@ Requirements: Node.js 22 or 24, npm, and a Git checkout of this repository.
 
 ```bash
 npm ci
-npm run build
+npm run verify:contributor
 ```
 
 Configure your MCP client to run the compiled stdio entry point:
@@ -131,7 +136,7 @@ Restart the MCP client and list tools. The server can initialize and expose its
 inventory without n8n credentials; connected tools validate the URL and API key
 only when called.
 
-The release provides both a signed MCPB for compatible clients and
+Verified releases provide both a signed MCPB for compatible clients and
 exact-version `npx` configuration for portability. `@latest`, global installs,
 and `curl | shell` are not reproducible defaults. See
 [Installation](docs/installation.md) for the release policy and client-specific
@@ -283,12 +288,13 @@ Read the complete [security model](docs/security-model.md) and use
 
 ```bash
 npm ci
-npm run check
+npm run verify:contributor
 npm run sbom > sbom.cdx.json
 ```
 
-`npm run check` verifies formatting, dependency licenses/notices, strict
-TypeScript, all tests, the compiled runtime, and documentation inventory parity.
+`npm run verify:contributor` runs the complete keyless contributor gate,
+including formatting, dependency licenses/notices, strict TypeScript, all
+tests, the compiled runtime, and documentation inventory parity.
 See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a change.
 
 ## Scope and non-affiliation
@@ -299,7 +305,7 @@ API. The project does not redistribute the `n8n-nodes-base` catalog and does not
 use browser cookies, interactive session routes, or runtime package downloads to
 construct one.
 
-The v0.1.1 surface intentionally excludes arbitrary workflow execution,
+The v0.1.2 candidate surface intentionally excludes arbitrary workflow execution,
 credential/workflow transfer, folders, data tables, beta evaluation endpoints,
 and execution annotations. See the [roadmap](ROADMAP.md) for the annotation
 proposal retained outside the release target.

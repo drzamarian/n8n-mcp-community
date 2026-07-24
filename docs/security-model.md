@@ -1,6 +1,6 @@
 # Security model
 
-This document describes the controls and residual risks of the v0.1.1 source
+This document describes the controls and residual risks of the v0.1.2 source
 candidate. It is a threat model, not a claim that the software or the connected
 n8n instance is invulnerable.
 
@@ -83,11 +83,11 @@ presence.
 
 The shared sanitizer:
 
-- replaces scalar and container values under secret-bearing key names, while
-  retaining allowlisted structural map keys only when needed for graph or
-  credential-schema usability; secret-like property descriptors retain only
-  their non-secret structure and redact defaults, examples, values, and nested
-  containers;
+- replaces secret-bearing object-key content, plus scalar and container values
+  under secret-bearing semantic names, while retaining allowlisted structural
+  map keys only when needed for graph or credential-schema usability;
+  secret-like property descriptors retain only their non-secret structure and
+  redact defaults, examples, values, and nested containers;
 - filters common email, phone, Brazilian CPF/CNPJ, PIX, bearer, JWT, token, and
   prompt-injection patterns;
 - removes prototype-related keys and control characters;
@@ -150,6 +150,21 @@ security audit of n8n or its host.
 Exact confirmation reduces accidental calls but is not a recovery mechanism.
 Deletes, execution stops/retries, activation changes, archive changes, and user
 invitations may have irreversible or externally visible effects.
+
+### Downstream dependency resolution
+
+The repository and bundled MCPB use a root override to resolve the patched
+`@hono/node-server` 2.x line. npm does not inherit overrides from dependency
+packages, so a fresh consumer of the npm tarball currently resolves
+`@hono/node-server@1.19.15` through MCP SDK 1.29.0. That release contains the
+reviewed backport for encoded backslashes, while advisory registries may still
+report GHSA-frvp-7c67-39w9 during metadata convergence. The affected
+`serve-static` HTTP adapter is not imported by this stdio-only server. The
+verification gate installs the candidate in a disposable consumer without
+overrides, accepts only the exact known advisory or a fully clean advisory
+readback, pins the reviewed backport version, and proves the MCP inventory still
+starts. Closure still requires a new reviewed release and a clean no-override
+consumer audit of that released version.
 
 ## Threats outside this boundary
 

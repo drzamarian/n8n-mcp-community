@@ -10,7 +10,8 @@ tests when behavior or security controls change.
 ## Security, compatibility, and documentation
 
 - [ ] The pull request targets `dev`, not `main`.
-- [ ] I ran `npm run verify` or explained the exact unavailable gate.
+- [ ] I ran `npm run verify:contributor` or explained the exact unavailable gate.
+- [ ] If I am a maintainer preparing a release, I also ran the keyed `npm run verify` gate.
 - [ ] I added or updated tests for every changed contract.
 - [ ] I updated native-English documentation for user-visible changes.
 - [ ] I did not add secrets, private hosts, personal data, or production fixtures.

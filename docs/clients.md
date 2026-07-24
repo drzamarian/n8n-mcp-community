@@ -25,21 +25,22 @@ mapping. The equivalent source configuration is:
 }
 ```
 
-Use an absolute path. Build first with `npm ci && npm run build`, place secrets
-only in the client's environment or secret UI, and restart the client after any
-configuration change. The exact file location and outer JSON shape belong to
-the client and may differ from this generic fragment.
+Use an absolute path. Run `npm ci && npm run verify:contributor` first, place
+secrets only in the client's environment or secret UI, and restart the client
+after any configuration change. The exact file location and outer JSON shape
+belong to the client and may differ from this generic fragment.
 
 ## Exact-version npx configuration
 
-The portable configuration runs the reviewed published version explicitly:
+After npm provenance and GitHub release readback agree, replace
+`<VERIFIED_VERSION>` with that exact version:
 
 ```json
 {
   "mcpServers": {
     "n8n-community": {
       "command": "npx",
-      "args": ["--yes", "n8n-mcp-community@0.1.1"],
+      "args": ["--yes", "n8n-mcp-community@<VERIFIED_VERSION>"],
       "env": {
         "N8N_API_URL": "https://n8n.example.com",
         "N8N_API_KEY": "replace-with-a-dedicated-api-key",
@@ -59,7 +60,7 @@ On Windows, a client that cannot launch `npx` directly may use:
 ```json
 {
   "command": "cmd",
-  "args": ["/c", "npx", "--yes", "n8n-mcp-community@0.1.1"]
+  "args": ["/c", "npx", "--yes", "n8n-mcp-community@<VERIFIED_VERSION>"]
 }
 ```
 

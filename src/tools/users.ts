@@ -10,8 +10,10 @@ import {
   pathSegment,
 } from "./schemas.js";
 
-const email = z.string().email().max(254);
-const userLookup = z.union([identifier(), email]);
+const email = z.string().email().max(254).describe("Exact valid email address of the user.");
+const userLookup = z
+  .union([identifier("Stable n8n user ID."), email])
+  .describe("Stable n8n user ID or exact valid email address.");
 const userSchema = z.object({
   id: identifier(),
   email: email.optional(),
@@ -53,15 +55,21 @@ export const userTools: readonly ToolDefinition[] = Object.freeze([
   defineTool({
     name: "n8n_users_list",
     title: "List users",
-    description: "List users visible through the n8n Public API.",
+    description:
+      "List one page of users visible through the n8n Public API. Use it for discovery; use n8n_users_get when a stable ID or exact email is already known. Returns validated user metadata and an optional next-page cursor.",
     operation: "read-only",
+    outputDataDescription:
+      "Object with data (up to 100 validated user records) and nextCursor. Records include id and optional email/name/role/status/timestamps; recognized personal values may be redacted.",
     input: {
-      includeRole: z.boolean().default(true),
+      includeRole: z
+        .boolean()
+        .default(true)
+        .describe("Ask n8n to include each user's global role when permitted (default true)."),
       limit: pageLimit(),
       cursor: cursor.optional(),
     },
-    handler: async (input, context) =>
-      userListSchema.parse(
+    handler: async (input, context) => {
+      const page = userListSchema.parse(
         await context.client().request({
           path: "/users",
           query: {
@@ -70,14 +78,25 @@ export const userTools: readonly ToolDefinition[] = Object.freeze([
             cursor: input.cursor,
           },
         }),
-      ),
+      );
+      return { ...page, nextCursor: page.nextCursor ?? null };
+    },
   }),
   defineTool({
     name: "n8n_users_get",
     title: "Get user",
-    description: "Get one user by stable ID or exact email address.",
+    description:
+      "Get one user by stable ID or exact email address. Use it for targeted verification before an administrative action; use n8n_users_list for discovery. Returns validated identity, role, and account state without changing the user.",
     operation: "read-only",
-    input: { userIdOrEmail: userLookup, includeRole: z.boolean().default(true) },
+    outputDataDescription:
+      "One validated user record with id and optional email, firstName, lastName, role, disabled/pending status, and timestamps. Recognized personal values may be redacted.",
+    input: {
+      userIdOrEmail: userLookup,
+      includeRole: z
+        .boolean()
+        .default(true)
+        .describe("Ask n8n to include the user's global role when permitted (default true)."),
+    },
     handler: async (input, context) =>
       userSchema.parse(
         await context.client().request({
@@ -89,11 +108,17 @@ export const userTools: readonly ToolDefinition[] = Object.freeze([
   defineTool({
     name: "n8n_users_create",
     title: "Invite user",
-    description: "Invite one non-owner user after exact email confirmation.",
+    description:
+      "Invite one non-owner user by email with a supported global role. Use n8n_users_get first when the address may already exist; this tool is not an update operation. Unsafe mode and exact email confirmation are required; returns delivery state without an acceptance URL.",
     operation: "unsafe",
+    outputDataDescription:
+      "Confirmed invitation outcome with userCreated, invited, userId, email, requestedRole, roleConfirmedByResponse, emailSent, delivery, and inviteAcceptUrlReturned=false. Acceptance URLs are never returned.",
     input: {
       email,
-      role: z.enum(["global:member", "global:admin"]).default("global:member"),
+      role: z
+        .enum(["global:member", "global:admin"])
+        .default("global:member")
+        .describe("Global role to request for the invited user (default global:member)."),
       confirmation,
     },
     confirmation: (input) => ({ supplied: input.confirmation, expected: `INVITE ${input.email}` }),
@@ -138,9 +163,11 @@ export const userTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_users_delete",
     title: "Delete user",
     description:
-      "Delete one API-eligible user after exact confirmation. Ownership handling follows n8n's supported Public API behavior.",
+      "Delete one API-eligible user; ownership handling follows n8n's Public API. Use it only after n8n_users_get verifies the target and consequences; read tools should be used for inspection. Unsafe mode and exact confirmation are required; returns deleted=true.",
     operation: "unsafe",
-    input: { userId: identifier(), confirmation },
+    outputDataDescription:
+      "Object with the validated input userId and deleted=true. The tool makes no ownership-transfer claim and accepts n8n's successful empty response.",
+    input: { userId: identifier("Stable ID of the API-eligible user to delete."), confirmation },
     confirmation: (input) => ({ supplied: input.confirmation, expected: `DELETE ${input.userId}` }),
     handler: async (input, context) => {
       await context.client().request({

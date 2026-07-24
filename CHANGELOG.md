@@ -6,13 +6,40 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.2] - Frozen release candidate
+
+Version 0.1.2 is a frozen release candidate. Availability is established only
+by matching npm provenance, GitHub Release assets and signatures, and MCP
+Registry readbacks; this immutable entry is not rewritten after publication.
+
 ### Security
 
 - The transitive `fast-uri` dependency is updated past
   GHSA-v2hh-gcrm-f6hx, and `@hono/node-server` is overridden to the patched
   2.x line for GHSA-frvp-7c67-39w9. The affected HTTP adapter is unused by
-  this stdio-only server; the override keeps the dependency audit at zero
-  findings and is removable once the MCP SDK adopts the patched major.
+  this stdio-only server. The project and bundled MCPB trees audit clean, but
+  npm does not inherit dependency-package overrides: a disposable downstream
+  consumer resolves the reviewed 1.19.15 backport through MCP SDK 1.29.0.
+  The gate accepts only the exact known advisory or a fully clean advisory
+  readback while registry metadata converges, and closure still requires a clean
+  no-override audit of the published 0.1.2 consumer.
+
+### Changed
+
+- All 44 MCP-visible tool definitions now state their specific purpose, safe
+  usage boundary, named sibling alternatives, behavior, and return semantics.
+- Every top-level input and output field now publishes a meaningful JSON Schema
+  description, including the dedicated `n8n_introspect` result contract.
+- Every generic tool now publishes its own required `data` result contract, and
+  an exact normalized `tools/list` metadata fingerprint prevents semantic drift.
+- Workflow create/update now express the two-number node position as a bounded
+  homogeneous JSON Schema array. Runtime validation is unchanged, while Codex
+  can expose both tools instead of rejecting the tuple-form `items` array.
+- Fork pull requests use a complete keyless contributor gate. Only trusted
+  maintainer pushes can authenticate and approve an exact artifact baseline.
+- Installation documentation no longer treats a source-tree version as proof
+  that npm, GitHub, signatures, provenance, or Registry publication occurred.
+- Private Glama review captures are excluded from the public Git boundary.
 
 ## [0.1.1] - 2026-07-21
 
@@ -138,6 +165,7 @@ All notable changes to this project will be documented here. The format follows
   credentials, keys, and generated release artifacts cannot survive in that
   publishable history; authenticated public release receipts remain supported.
 
-[Unreleased]: https://github.com/drzamarian/n8n-mcp-community/compare/v0.1.1...HEAD
+[Unreleased]: #unreleased
+[0.1.2]: #012---frozen-release-candidate
 [0.1.1]: https://github.com/drzamarian/n8n-mcp-community/releases/tag/v0.1.1
 [0.1.0]: https://github.com/drzamarian/n8n-mcp-community/releases/tag/v0.1.0

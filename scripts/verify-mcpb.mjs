@@ -11,14 +11,21 @@ import {
   EXPECTED_MCPB_PLATFORMS,
 } from "./release-metadata-policy.mjs";
 import { resolveNodeEntrypoint, runPortableCommandSync } from "./portable-cli.mjs";
+import { isForbiddenMcpbProjectPath } from "./public-boundary-policy.mjs";
 
 const root = process.cwd();
+const contributorMode = process.argv.length === 3 && process.argv[2] === "--contributor";
+if (process.argv.length > (contributorMode ? 3 : 2)) {
+  throw new Error("Usage: node scripts/verify-mcpb.mjs [--contributor]");
+}
 const sourceDist = path.join(root, "dist");
 const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
 const artifactBaseline = JSON.parse(
   await readFile(path.join(root, "release", "artifact-baseline.json"), "utf8"),
 );
-await verifyArtifactReviewForPackageState(root, packageJson.private);
+if (!contributorMode) {
+  await verifyArtifactReviewForPackageState(root, packageJson.private);
+}
 const bundle = path.join(sourceDist, `n8n-mcp-community-${packageJson.version}.mcpb`);
 const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "n8n-mcp-community-verify-"));
 const unpacked = path.join(temporaryRoot, "bundle");
@@ -116,12 +123,13 @@ try {
   }
   const projectFiles = allBundleFiles.filter((file) => !file.startsWith("server/node_modules/"));
   if (
-    artifactBaseline.schemaVersion !== 1 ||
-    artifactBaseline.packageVersion !== packageJson.version ||
-    artifactBaseline.mcpb.sha256 !== artifactHash ||
-    artifactBaseline.mcpb.totalFileCount !== allBundleFiles.length ||
-    JSON.stringify(artifactBaseline.mcpb.runtimeFiles) !== JSON.stringify(sourceFiles) ||
-    JSON.stringify(artifactBaseline.mcpb.projectFiles) !== JSON.stringify(projectFiles)
+    !contributorMode &&
+    (artifactBaseline.schemaVersion !== 1 ||
+      artifactBaseline.packageVersion !== packageJson.version ||
+      artifactBaseline.mcpb.sha256 !== artifactHash ||
+      artifactBaseline.mcpb.totalFileCount !== allBundleFiles.length ||
+      JSON.stringify(artifactBaseline.mcpb.runtimeFiles) !== JSON.stringify(sourceFiles) ||
+      JSON.stringify(artifactBaseline.mcpb.projectFiles) !== JSON.stringify(projectFiles))
   ) {
     throw new Error("MCPB artifact differs from the exact reviewed manifest and digest.");
   }
@@ -131,17 +139,15 @@ try {
   const runtimeProjectFiles = projectFiles.filter((file) => file.startsWith("server/dist/"));
   const otherProjectFiles = projectFiles.filter((file) => !file.startsWith("server/dist/"));
   const dependencyFileCount = allBundleFiles.length - projectFiles.length;
-  assertMcpbBaselineFileCounts(artifactBaseline.mcpb, {
-    totalFileCount: allBundleFiles.length,
-    dependencyFileCount,
-    runtimeFileCount: runtimeProjectFiles.length,
-    otherProjectFileCount: otherProjectFiles.length,
-  });
-  const forbidden = projectFiles.filter((file) =>
-    /(?:^|\/)(?:src|test|sdds|\.audit)(?:\/|$)|(?:^|\/)\.env(?:\.|$)|(?:AGENTS|MEMORY|SOUL|ARCHITECT)\.md$/i.test(
-      file,
-    ),
-  );
+  if (!contributorMode) {
+    assertMcpbBaselineFileCounts(artifactBaseline.mcpb, {
+      totalFileCount: allBundleFiles.length,
+      dependencyFileCount,
+      runtimeFileCount: runtimeProjectFiles.length,
+      otherProjectFileCount: otherProjectFiles.length,
+    });
+  }
+  const forbidden = projectFiles.filter(isForbiddenMcpbProjectPath);
   if (forbidden.length > 0) throw new Error(`Forbidden MCPB files: ${forbidden.join(", ")}`);
 
   const packageManifests = allBundleFiles.filter(
@@ -206,6 +212,7 @@ try {
         forbiddenFiles: forbidden.length,
         sha256: artifactHash,
         reproducible,
+        artifactBaselineVerified: !contributorMode,
         signed: false,
         status: "pass",
       },

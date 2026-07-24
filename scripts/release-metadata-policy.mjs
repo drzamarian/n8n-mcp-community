@@ -70,61 +70,47 @@ export function isSemanticVersion(value) {
   );
 }
 
-function isCalendarDate(value) {
-  const parsed = new Date(`${value}T00:00:00.000Z`);
-  return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value;
-}
-
-function unpublishedCandidateAnchor(version) {
-  const heading = `[${version}] - Unpublished candidate`;
+function frozenCandidateAnchor(version) {
+  const heading = `[${version}] - Frozen release candidate`;
   return `#${heading
     .toLowerCase()
     .replace(/[^a-z0-9_ -]/g, "")
     .replaceAll(" ", "-")}`;
 }
 
-export function changelogDescribesPackageState(packageJson, changelog, repositoryUrl) {
+export function changelogDescribesPackageState(packageJson, changelog) {
   const version = packageJson.version;
   if (!isSemanticVersion(version)) return false;
   const lines = changelog.split(/\r?\n/);
   if (!changelog.includes("[Unreleased]:")) return false;
-
-  if (packageJson.private === true) {
-    const unpublishedHeading = `[${version}] - Unpublished candidate`;
-    return (
-      lines.filter((line) => line === `## ${unpublishedHeading}`).length === 1 &&
-      changelog.includes(`[${version}]: ${unpublishedCandidateAnchor(version)}`) &&
-      changelog.includes("[Unreleased]: #unreleased") &&
-      changelog.includes("No public version has been released.")
-    );
+  if (
+    (packageJson.private !== true && packageJson.private !== false) ||
+    packageJson.releaseState !== "candidate"
+  ) {
+    return false;
   }
-
-  if (packageJson.private !== false) return false;
-  const releasePrefix = `## [${version}] - `;
-  const releaseHeadings = lines.filter((line) => line.startsWith(releasePrefix));
-  const releaseDate = releaseHeadings[0]?.slice(releasePrefix.length);
+  const candidateHeading = `[${version}] - Frozen release candidate`;
   return (
-    releaseHeadings.length === 1 &&
-    isCalendarDate(releaseDate) &&
-    changelog.includes(`[${version}]: ${repositoryUrl}/releases/tag/v${version}`) &&
-    changelog.includes(`[Unreleased]: ${repositoryUrl}/compare/v${version}...HEAD`) &&
-    !changelog.includes(`## [${version}] - Unpublished candidate`) &&
-    !changelog.includes("No public version has been released.")
+    lines.filter((line) => line === `## ${candidateHeading}`).length === 1 &&
+    changelog.includes(`[${version}]: ${frozenCandidateAnchor(version)}`) &&
+    changelog.includes("[Unreleased]: #unreleased") &&
+    changelog.includes(`Version ${version} is a frozen release candidate.`) &&
+    changelog.includes("this immutable entry is not rewritten after publication")
   );
 }
 
 export function verifyReleaseMetadataPolicySelfTest() {
-  const repository = "https://github.com/example/project";
-  const privatePackage = { version: "1.2.3-rc.1", private: true };
-  const privateChangelog = `## [1.2.3-rc.1] - Unpublished candidate\n\nNo public version has been released.\n\n[Unreleased]: #unreleased\n[1.2.3-rc.1]: #123-rc1---unpublished-candidate\n`;
+  const privatePackage = { version: "1.2.3-rc.1", private: true, releaseState: "candidate" };
+  const privateChangelog = `## [1.2.3-rc.1] - Frozen release candidate\n\nVersion 1.2.3-rc.1 is a frozen release candidate. Availability is established only by matching external readbacks; this immutable entry is not rewritten after publication.\n\n[Unreleased]: #unreleased\n[1.2.3-rc.1]: #123-rc1---frozen-release-candidate\n`;
   const privateChangelogWithWrongAnchor = privateChangelog.replace(
-    "#123-rc1---unpublished-candidate",
-    "#1231---unpublished-candidate",
+    "#123-rc1---frozen-release-candidate",
+    "#1231---frozen-release-candidate",
   );
-  const stablePrivatePackage = { version: "0.1.0", private: true };
-  const stablePrivateChangelog = `## [0.1.0] - Unpublished candidate\n\nNo public version has been released.\n\n[Unreleased]: #unreleased\n[0.1.0]: #010---unpublished-candidate\n`;
-  const publicPackage = { version: "1.2.3", private: false };
-  const publicChangelog = `## [1.2.3] - 2026-07-18\n\n[Unreleased]: ${repository}/compare/v1.2.3...HEAD\n[1.2.3]: ${repository}/releases/tag/v1.2.3\n`;
+  const stablePrivatePackage = { version: "0.1.0", private: true, releaseState: "candidate" };
+  const stablePrivateChangelog = `## [0.1.0] - Frozen release candidate\n\nVersion 0.1.0 is a frozen release candidate. Availability is established only by matching external readbacks; this immutable entry is not rewritten after publication.\n\n[Unreleased]: #unreleased\n[0.1.0]: #010---frozen-release-candidate\n`;
+  const publicCandidatePackage = { version: "1.2.3", private: false, releaseState: "candidate" };
+  const publicCandidateChangelog = `## [1.2.3] - Frozen release candidate\n\nVersion 1.2.3 is a frozen release candidate. Availability is established only by matching external readbacks; this immutable entry is not rewritten after publication.\n\n[Unreleased]: #unreleased\n[1.2.3]: #123---frozen-release-candidate\n`;
+  const publicPackage = { version: "1.2.3", private: false, releaseState: "released" };
 
   if (
     !isSemanticVersion(privatePackage.version) ||
@@ -132,19 +118,14 @@ export function verifyReleaseMetadataPolicySelfTest() {
     isSemanticVersion("1.2") ||
     isSemanticVersion("1.2.3-01") ||
     !isSemanticVersion("1.2.3+01") ||
-    !changelogDescribesPackageState(privatePackage, privateChangelog, repository) ||
-    changelogDescribesPackageState(privatePackage, privateChangelogWithWrongAnchor, repository) ||
-    !changelogDescribesPackageState(stablePrivatePackage, stablePrivateChangelog, repository) ||
-    !changelogDescribesPackageState(publicPackage, publicChangelog, repository) ||
+    !changelogDescribesPackageState(privatePackage, privateChangelog) ||
+    changelogDescribesPackageState(privatePackage, privateChangelogWithWrongAnchor) ||
+    !changelogDescribesPackageState(stablePrivatePackage, stablePrivateChangelog) ||
+    !changelogDescribesPackageState(publicCandidatePackage, publicCandidateChangelog) ||
+    changelogDescribesPackageState(publicPackage, publicCandidateChangelog) ||
     changelogDescribesPackageState(
-      { ...publicPackage, private: true },
-      publicChangelog,
-      repository,
-    ) ||
-    changelogDescribesPackageState(
-      { ...privatePackage, private: false },
+      { ...privatePackage, releaseState: "released" },
       privateChangelog,
-      repository,
     )
   ) {
     throw new Error("Release metadata policy self-test failed.");

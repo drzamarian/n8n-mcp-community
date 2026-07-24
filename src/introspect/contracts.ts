@@ -388,97 +388,124 @@ const DurationMetricsSchema = z.object({
 });
 
 export const IntrospectResultSchema = z.object({
-  schemaVersion: z.literal(INTROSPECT_SCHEMA_VERSION),
-  engineVersion: z.literal(INTROSPECT_ENGINE_VERSION),
-  status: z.enum(["complete", "partial"]),
-  profile: z.enum(["quick", "deep"]),
-  workflow: z.object({
-    id: z.string(),
-    label: z.string().optional(),
-    active: z.boolean(),
-    nodeCount: z.number().int().nonnegative(),
-  }),
-  sample: z.object({
-    lookbackHours: z.number().int().positive(),
-    maxExecutions: z.number().int().positive(),
-    metadataExecutions: z.number().int().nonnegative(),
-    eligibleExecutions: z.number().int().nonnegative(),
-    pages: z.number().int().nonnegative(),
-    detailRequests: z.number().int().nonnegative(),
-    sampledErrors: z.number().int().nonnegative(),
-    acceptedBytes: z.number().int().nonnegative(),
-    ordering: z.enum(["verified_newest_first", "unreliable", "unknown"]),
-    historyBoundary: z.enum([
-      "complete",
-      "lookback_reached",
-      "request_limited",
-      "execution_limited",
-      "ordering_unreliable",
-      "unknown",
-    ]),
-    oldestStartedAt: z.string().nullable(),
-    newestStartedAt: z.string().nullable(),
-  }),
-  summary: z.object({
-    findingCounts: z.object({
-      critical: z.number().int().nonnegative(),
-      high: z.number().int().nonnegative(),
-      medium: z.number().int().nonnegative(),
-      low: z.number().int().nonnegative(),
-      info: z.number().int().nonnegative(),
-    }),
-    ruleOutcomes: z.object({
-      triggered: z.number().int().nonnegative(),
-      passed: z.number().int().nonnegative(),
-      notApplicable: z.number().int().nonnegative(),
-      inconclusive: z.number().int().nonnegative(),
-      partiallyInconclusive: z.number().int().nonnegative(),
-    }),
-    findings: z.object({
-      totalCount: z.number().int().nonnegative(),
-      retainedCount: z.number().int().nonnegative(),
-      omittedCount: z.number().int().nonnegative(),
-      truncated: z.boolean(),
-    }),
-  }),
-  metrics: z.object({
-    statusCounts: StatusCountsSchema,
-    successRate: z.number().min(0).max(1).nullable(),
-    duration: DurationMetricsSchema,
-    consecutiveErrors: z.number().int().nonnegative().nullable(),
-    perNodeTimings: z
-      .array(
-        z.object({
-          nodeRef: z.string(),
-          label: z.string().optional(),
-          sampleCount: z.number().int().positive(),
-          medianMs: z.number().nonnegative(),
-          maxMs: z.number().nonnegative(),
-        }),
-      )
-      .max(1_000),
-    errorClusters: z
-      .array(
-        z.object({
-          fingerprint: z.string().regex(/^[a-f0-9]{16}$/),
-          nodeRef: z.string().optional(),
-          label: z.string().optional(),
-          sampleCount: z.number().int().positive(),
-          sampledErrorDetails: z.number().int().nonnegative(),
-          sampledErrors: z.number().int().nonnegative(),
-        }),
-      )
-      .max(100),
-  }),
-  findings: z.array(FindingSchema).max(1_000),
-  ruleCoverage: z.array(RuleCoverageSchema).max(100),
+  schemaVersion: z
+    .literal(INTROSPECT_SCHEMA_VERSION)
+    .describe("Version of the stable structured introspect result contract."),
+  engineVersion: z
+    .literal(INTROSPECT_ENGINE_VERSION)
+    .describe("Version of the deterministic local analysis engine that produced this result."),
+  status: z
+    .enum(["complete", "partial"])
+    .describe("Whether all requested bounded evidence was collected and analyzed."),
+  profile: z
+    .enum(["quick", "deep"])
+    .describe("Effective quick or deep analysis profile used for this result."),
+  workflow: z
+    .object({
+      id: z.string(),
+      label: z.string().optional(),
+      active: z.boolean(),
+      nodeCount: z.number().int().nonnegative(),
+    })
+    .describe("Sanitized identity and basic structure of the inspected workflow."),
+  sample: z
+    .object({
+      lookbackHours: z.number().int().positive(),
+      maxExecutions: z.number().int().positive(),
+      metadataExecutions: z.number().int().nonnegative(),
+      eligibleExecutions: z.number().int().nonnegative(),
+      pages: z.number().int().nonnegative(),
+      detailRequests: z.number().int().nonnegative(),
+      sampledErrors: z.number().int().nonnegative(),
+      acceptedBytes: z.number().int().nonnegative(),
+      ordering: z.enum(["verified_newest_first", "unreliable", "unknown"]),
+      historyBoundary: z.enum([
+        "complete",
+        "lookback_reached",
+        "request_limited",
+        "execution_limited",
+        "ordering_unreliable",
+        "unknown",
+      ]),
+      oldestStartedAt: z.string().nullable(),
+      newestStartedAt: z.string().nullable(),
+    })
+    .describe(
+      "Exact execution-history scope, ordering confidence, requests, and byte budget used.",
+    ),
+  summary: z
+    .object({
+      findingCounts: z.object({
+        critical: z.number().int().nonnegative(),
+        high: z.number().int().nonnegative(),
+        medium: z.number().int().nonnegative(),
+        low: z.number().int().nonnegative(),
+        info: z.number().int().nonnegative(),
+      }),
+      ruleOutcomes: z.object({
+        triggered: z.number().int().nonnegative(),
+        passed: z.number().int().nonnegative(),
+        notApplicable: z.number().int().nonnegative(),
+        inconclusive: z.number().int().nonnegative(),
+        partiallyInconclusive: z.number().int().nonnegative(),
+      }),
+      findings: z.object({
+        totalCount: z.number().int().nonnegative(),
+        retainedCount: z.number().int().nonnegative(),
+        omittedCount: z.number().int().nonnegative(),
+        truncated: z.boolean(),
+      }),
+    })
+    .describe("Counts of findings, rule outcomes, and any details omitted by output bounds."),
+  metrics: z
+    .object({
+      statusCounts: StatusCountsSchema,
+      successRate: z.number().min(0).max(1).nullable(),
+      duration: DurationMetricsSchema,
+      consecutiveErrors: z.number().int().nonnegative().nullable(),
+      perNodeTimings: z
+        .array(
+          z.object({
+            nodeRef: z.string(),
+            label: z.string().optional(),
+            sampleCount: z.number().int().positive(),
+            medianMs: z.number().nonnegative(),
+            maxMs: z.number().nonnegative(),
+          }),
+        )
+        .max(1_000),
+      errorClusters: z
+        .array(
+          z.object({
+            fingerprint: z.string().regex(/^[a-f0-9]{16}$/),
+            nodeRef: z.string().optional(),
+            label: z.string().optional(),
+            sampleCount: z.number().int().positive(),
+            sampledErrorDetails: z.number().int().nonnegative(),
+            sampledErrors: z.number().int().nonnegative(),
+          }),
+        )
+        .max(100),
+    })
+    .describe("Factual status, duration, node-timing, and value-free error-cluster measurements."),
+  findings: z
+    .array(FindingSchema)
+    .max(1_000)
+    .describe("Ordered deterministic findings retained within the configured output limit."),
+  ruleCoverage: z
+    .array(RuleCoverageSchema)
+    .max(100)
+    .describe("Per-rule outcome and completeness evidence, including omitted finding counts."),
   limitations: z
     .array(z.object({ code: z.enum(INTROSPECT_LIMITATION_CODES), message: z.string() }))
-    .max(100),
-  guidance: z.object({
-    instanceSecurityTool: z.literal("n8n_audit_generate"),
-    message: z.string(),
-  }),
+    .max(100)
+    .describe("Collection or analysis limitations that constrain interpretation of this result."),
+  guidance: z
+    .object({
+      instanceSecurityTool: z.literal("n8n_audit_generate"),
+      message: z.string(),
+    })
+    .describe("Boundary guidance pointing to the separate instance-level n8n security audit tool."),
 });
 
 export type IntrospectResult = z.infer<typeof IntrospectResultSchema>;

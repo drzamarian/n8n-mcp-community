@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "packageVersion": "0.1.1",
+  "packageVersion": "0.1.2",
   "npm": {
-    "sha256": "0fe5b6315699963c9982c98c41339ca957ce43f0e7e98dabc1bf49770aefd044",
-    "fileCount": 59,
+    "sha256": "ed311cb4874a48983f1edc31e3bc66a53befbb75027b75fdc200627ffd25312b",
+    "fileCount": 61,
     "files": [
       "CHANGELOG.md",
       "CODE_OF_CONDUCT.md",
@@ -40,7 +40,9 @@
       "dist/tools/definition.js",
       "dist/tools/endpoint-contracts.js",
       "dist/tools/executions.js",
+      "dist/tools/output-contracts.js",
       "dist/tools/registry.js",
+      "dist/tools/response-contracts.js",
       "dist/tools/schemas.js",
       "dist/tools/tags.js",
       "dist/tools/users.js",
@@ -67,8 +69,8 @@
     ]
   },
   "mcpb": {
-    "sha256": "a05ce451a7b86e7afd8ccb55a55ce695b587f9b547fb1bf55312d5e5c2ab56f0",
-    "totalFileCount": 2165,
+    "sha256": "a8a0315799918aed74187bb4fb8996d90338a6be8e259c9f139d9bdcbebd7286",
+    "totalFileCount": 2167,
     "dependencyFileCount": 2128,
     "runtimeFiles": [
       "config.js",
@@ -97,7 +99,9 @@
       "tools/definition.js",
       "tools/endpoint-contracts.js",
       "tools/executions.js",
+      "tools/output-contracts.js",
       "tools/registry.js",
+      "tools/response-contracts.js",
       "tools/schemas.js",
       "tools/tags.js",
       "tools/users.js",
@@ -135,7 +139,9 @@
       "server/dist/tools/definition.js",
       "server/dist/tools/endpoint-contracts.js",
       "server/dist/tools/executions.js",
+      "server/dist/tools/output-contracts.js",
       "server/dist/tools/registry.js",
+      "server/dist/tools/response-contracts.js",
       "server/dist/tools/schemas.js",
       "server/dist/tools/tags.js",
       "server/dist/tools/users.js",
@@ -146,7 +152,7 @@
     ]
   },
   "release": {
-    "serverJsonSha256": "c63e49cac279b4767857f7b4ad2a0d1ce470dda0203b68e97625b00cd54104f0",
-    "sbomCanonicalSha256": "e15402b1d1fbcd2ed828b41c522abde545de74623ec189cb5496b72d31d11bbd"
+    "serverJsonSha256": "3772849d62d83558131e7f4bc8bfe381199a2f666f9acda5fa248eca3c0cd431",
+    "sbomCanonicalSha256": "ede5a21ed488749b9018a37d06a5b80917b64c7e4cf410c9228fb44c2f963fe8"
   }
 }

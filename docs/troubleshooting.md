@@ -13,9 +13,10 @@ node dist/index.js --help
 node dist/index.js doctor
 ```
 
-If `dist/index.js` is missing, run `npm ci && npm run build`. If `doctor` fails,
-check the four variables in [Configuration](configuration.md). On a configuration
-failure the CLI writes one fixed JSON line to stderr — for example
+If `dist/index.js` is missing, run
+`npm ci && npm run verify:contributor`. If `doctor` fails, check the four
+variables in [Configuration](configuration.md). On a configuration failure the
+CLI writes one fixed JSON line to stderr — for example
 `{"event":"startup_failed","code":"configuration_error","reason":"api_url_scheme_unsupported","setting":"N8N_API_URL"}` —
 that names the offending setting and the exact rule that failed. It never echoes
 the URL or key.

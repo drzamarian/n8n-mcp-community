@@ -53,13 +53,20 @@ Every tool definition owns:
 - a stable name, title, and purpose;
 - one of three operation classes: `read-only`, `write`, or `unsafe`;
 - a strict Zod input schema that rejects unknown fields;
+- a required tool-specific success-data contract surfaced in the MCP output
+  schema, including keys, bounds, pagination, truncation, and withholding
+  semantics that apply to that tool;
 - MCP annotations derived from the operation class with an explicit per-tool
   override and a conservative destructive default for every mutation;
 - an optional exact-confirmation function for unsafe operations;
 - a bounded handler that validates untrusted upstream structures.
 
 The shared factory turns generic success into
-`{ data, redacted, untrusted: true }`. Introspect applies the same sanitizer to
+`{ data, redacted, untrusted: true }`; each generic tool's `data` property
+publishes its own required contract rather than a shared unknown-value
+description. The factory validates the sanitized envelope against that same
+tool-specific contract before it serializes or returns a successful result, so
+the advertised schema and runtime boundary cannot diverge silently. Introspect applies the same sanitizer to
 its purpose-built reduced schema, emits that schema directly, and renders one
 concise summary plus one exact JSON fallback under its combined-output budget.
 Errors contain a fixed code, a sanitized
@@ -114,7 +121,8 @@ Keep the change vertical and small:
 5. Add positive, denial, malformed-input, and leak-regression tests.
 6. Update `docs/tools.md`, the README inventory, compatibility evidence, and
    provenance review.
-7. Run `npm run check` and the release gates described in `CONTRIBUTING.md`.
+7. Run `npm run verify:contributor`; release maintainers then run the keyed
+   release gates described in `CONTRIBUTING.md`.
 
 Changing a tool count, name, side effect, or privacy boundary requires a
 versioned specification decision rather than a registry-only edit.

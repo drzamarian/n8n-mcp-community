@@ -3,17 +3,15 @@ import { defineTool, type ToolDefinition } from "./definition.js";
 import { booleanQuery, numberQuery } from "./common.js";
 import { confirmation, cursor, identifier, pageLimit, pathSegment } from "./schemas.js";
 
-const executionId = z.union([identifier(), z.number().int().nonnegative().transform(String)]);
-const executionStatus = z.enum([
-  "new",
-  "running",
-  "success",
-  "unknown",
-  "error",
-  "canceled",
-  "crashed",
-  "waiting",
-]);
+const executionId = z
+  .union([
+    identifier("Stable string ID of the saved execution."),
+    z.number().int().nonnegative().transform(String),
+  ])
+  .describe("Stable execution ID, supplied as a valid string ID or non-negative integer.");
+const executionStatus = z
+  .enum(["new", "running", "success", "unknown", "error", "canceled", "crashed", "waiting"])
+  .describe("Return only executions with this n8n status.");
 
 const executionSchema = z
   .object({
@@ -67,12 +65,22 @@ export const executionTools: readonly ToolDefinition[] = Object.freeze([
   defineTool({
     name: "n8n_executions_list",
     title: "List executions",
-    description: "List execution metadata. Raw workflow payload values are never returned.",
+    description:
+      "List one page of saved execution metadata, optionally filtered by status or workflow. Use it for discovery and bounded triage; use n8n_executions_get when an execution ID is known. Returns metadata and a cursor, never raw workflow payload values.",
     operation: "read-only",
+    outputDataDescription:
+      "Object with data (up to 100 allowlisted execution metadata records) and nextCursor. Each record includes identity/status/timing/retry metadata plus value-free dataPolicy; raw execution values are never returned.",
     input: {
-      includeData: z.boolean().default(false),
+      includeData: z
+        .boolean()
+        .default(false)
+        .describe(
+          "Ask n8n whether execution data exists; values remain withheld even when true (default false).",
+        ),
       status: executionStatus.optional(),
-      workflowId: identifier().optional(),
+      workflowId: identifier(
+        "Return only executions belonging to this stable workflow ID.",
+      ).optional(),
       limit: pageLimit(),
       cursor: cursor.optional(),
     },
@@ -99,9 +107,20 @@ export const executionTools: readonly ToolDefinition[] = Object.freeze([
   defineTool({
     name: "n8n_executions_get",
     title: "Get execution",
-    description: "Get metadata for one execution with a value-free data-presence summary.",
+    description:
+      "Get metadata for one saved execution. Use it when the ID is known; use n8n_executions_list to discover or filter executions. Returns status, timing, workflow identity, and data presence without exposing node inputs or outputs.",
     operation: "read-only",
-    input: { executionId, includeData: z.boolean().default(false) },
+    outputDataDescription:
+      "One allowlisted execution metadata record with identity, status, mode, workflow/timing/retry fields when present, and value-free dataPolicy. Raw execution values are never returned.",
+    input: {
+      executionId,
+      includeData: z
+        .boolean()
+        .default(false)
+        .describe(
+          "Ask n8n whether execution data exists; values remain withheld even when true (default false).",
+        ),
+    },
     handler: async (input, context) =>
       summarizeExecution(
         executionSchema.parse(
@@ -119,8 +138,11 @@ export const executionTools: readonly ToolDefinition[] = Object.freeze([
   defineTool({
     name: "n8n_executions_delete",
     title: "Delete execution",
-    description: "Permanently delete a saved execution after exact confirmation.",
+    description:
+      "Permanently delete one saved execution. Use it only after n8n_executions_get confirms the target and retained history is no longer needed; inspection alone should use the read tools. Unsafe mode and exact confirmation are required; returns deleted=true.",
     operation: "unsafe",
+    outputDataDescription:
+      "Object with the validated input executionId and deleted=true. Identity is bound to the request and does not rely on an upstream response body.",
     input: { executionId, confirmation },
     confirmation: (input) => ({
       supplied: input.confirmation,
@@ -136,9 +158,19 @@ export const executionTools: readonly ToolDefinition[] = Object.freeze([
   defineTool({
     name: "n8n_executions_retry",
     title: "Retry execution",
-    description: "Retry one eligible saved execution after exact confirmation.",
+    description:
+      "Retry one eligible saved execution, which may repeat external side effects. Use it only after n8n_executions_get review; use n8n_executions_stop for a currently running execution. Unsafe mode and exact confirmation are required; returns value-free retry metadata.",
     operation: "unsafe",
-    input: { executionId, loadWorkflow: z.boolean().default(true), confirmation },
+    outputDataDescription:
+      "Allowlisted metadata for the new or retried execution, including scalar identity/status/timing/retry fields when supplied by n8n; raw execution values are omitted.",
+    input: {
+      executionId,
+      loadWorkflow: z
+        .boolean()
+        .default(true)
+        .describe("Load the currently saved workflow definition for the retry (default true)."),
+      confirmation,
+    },
     confirmation: (input) => ({
       supplied: input.confirmation,
       expected: `RETRY ${input.executionId}`,
@@ -158,8 +190,11 @@ export const executionTools: readonly ToolDefinition[] = Object.freeze([
   defineTool({
     name: "n8n_executions_stop",
     title: "Stop execution",
-    description: "Stop one running execution after exact confirmation.",
+    description:
+      "Request cancellation of one running execution without rolling back completed external effects. Use n8n_executions_get for inspection or n8n_executions_retry for an eligible saved failure. Unsafe mode and exact confirmation are required; returns stopped, already_finished, or unknown.",
     operation: "unsafe",
+    outputDataDescription:
+      "Object with executionId, stopped, state (stopped, already_finished, or unknown), and optional finished/status/stoppedAt metadata. HTTP success alone never asserts that a stop occurred.",
     input: { executionId, confirmation },
     confirmation: (input) => ({
       supplied: input.confirmation,

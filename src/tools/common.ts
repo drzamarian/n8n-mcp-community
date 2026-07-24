@@ -31,32 +31,3 @@ export function requireSafeAscii(value: string, label: string, maximumLength = 2
   }
   return value;
 }
-
-export function projectMetadata(value: unknown): Record<string, unknown> {
-  const source = z.record(z.unknown()).parse(value);
-  const allowed = [
-    "id",
-    "name",
-    "type",
-    "active",
-    "isArchived",
-    "createdAt",
-    "updatedAt",
-    "versionId",
-    "workflowId",
-    "status",
-    "startedAt",
-    "stoppedAt",
-    "mode",
-    "finished",
-    "retryOf",
-    "retrySuccessId",
-    "role",
-    "disabled",
-  ] as const;
-  const output: Record<string, unknown> = {};
-  for (const key of allowed) {
-    if (Object.hasOwn(source, key)) output[key] = source[key];
-  }
-  return output;
-}

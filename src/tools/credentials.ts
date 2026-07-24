@@ -10,6 +10,7 @@ import {
   pathSegment,
   safeJsonValue,
 } from "./schemas.js";
+import { credentialTypeSchema } from "./response-contracts.js";
 
 const credentialMetadataSchema = z.object({
   id: identifier(),
@@ -21,6 +22,20 @@ const credentialMetadataSchema = z.object({
   isGlobal: z.boolean().optional(),
   isResolvable: z.boolean().optional(),
 });
+
+const credentialTypeIdentifier = z
+  .string()
+  .regex(
+    /^(?!\.{1,2}$)[A-Za-z0-9_.-]{1,128}$/,
+    "Use 1-128 ASCII letters, digits, dots, underscores, or hyphens; '.' and '..' are not allowed.",
+  )
+  .describe(
+    "Public n8n credential type: 1-128 ASCII letters, digits, dots, underscores, or hyphens.",
+  );
+
+function credentialTypePathSegment(value: string): string {
+  return encodeURIComponent(credentialTypeIdentifier.parse(value));
+}
 
 const credentialListSchema = z.object({
   data: z.array(credentialMetadataSchema).max(100),
@@ -66,13 +81,28 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
   defineTool({
     name: "n8n_credentials_create",
     title: "Create credential",
-    description: "Create a credential while keeping credential values out of output and logs.",
+    description:
+      "Create one credential from a supported public schema. Use n8n_credentials_schema first; use n8n_credentials_update when the credential already exists. Secret values belong only in input and are excluded from logs and output; returns metadata only.",
     operation: "write",
+    outputDataDescription:
+      "Validated credential metadata with id, name, type, optional timestamps, managed/global flags, and resolvability. Stored credential values are never returned.",
     input: {
-      name: z.string().min(1).max(128),
-      type: z.string().regex(/^[A-Za-z0-9_.-]{1,128}$/),
-      data: z.record(safeJsonValue),
-      isResolvable: z.boolean().optional(),
+      name: z
+        .string()
+        .min(1)
+        .max(128)
+        .describe("Human-readable credential name (1-128 characters)."),
+      type: z
+        .string()
+        .regex(/^[A-Za-z0-9_.-]{1,128}$/)
+        .describe("Public n8n credential type returned by n8n_credentials_schema."),
+      data: z
+        .record(safeJsonValue)
+        .describe("Credential field values matching the selected public schema; never returned."),
+      isResolvable: z
+        .boolean()
+        .optional()
+        .describe("Optional n8n resolvability flag for credential types that support it."),
     },
     handler: async (input, context) => {
       assertSafeJson(input.data);
@@ -84,9 +114,12 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
   defineTool({
     name: "n8n_credentials_delete",
     title: "Delete credential",
-    description: "Permanently delete one stored credential after exact confirmation.",
+    description:
+      "Permanently delete one stored credential, which can break referencing workflows. Use n8n_credentials_usage first; use n8n_credentials_update when replacement is sufficient. Unsafe mode and exact confirmation are required; returns the ID with deleted=true.",
     operation: "unsafe",
-    input: { credentialId: identifier(), confirmation },
+    outputDataDescription:
+      "Object with the validated input credentialId and deleted=true. Identity is bound to the request because n8n does not consistently return the deleted credential ID.",
+    input: { credentialId: identifier("Stable ID of the credential to delete."), confirmation },
     confirmation: (input) => ({
       supplied: input.confirmation,
       expected: `DELETE ${input.credentialId}`,
@@ -101,13 +134,18 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
   defineTool({
     name: "n8n_credentials_schema",
     title: "Get credential schema",
-    description: "Get the supported public schema for one credential type.",
+    description:
+      "Get the Public API field schema for one credential type. Use it before n8n_credentials_create or replacement-data updates; use n8n_credentials_get for stored metadata. Returns schema fields supplied by n8n, never stored secret values.",
     operation: "read-only",
-    input: { credentialType: identifier() },
+    outputDataDescription:
+      "Validated Public API schema object for the requested credential type. It describes accepted fields and constraints but never contains stored credential values.",
+    input: {
+      credentialType: credentialTypeIdentifier,
+    },
     handler: async (input, context) =>
-      z.record(z.unknown()).parse(
+      credentialTypeSchema.parse(
         await context.client().request({
-          path: `/credentials/schema/${pathSegment(input.credentialType)}`,
+          path: `/credentials/schema/${credentialTypePathSegment(input.credentialType)}`,
         }),
       ),
   }),
@@ -115,23 +153,30 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_credentials_list",
     title: "List credentials",
     description:
-      "List credential metadata through the public endpoint verified in n8n Community 2.30.5 and 2.30.7. Credential values are never returned.",
+      "List one page of credential metadata through the endpoint supported from n8n Community 2.30.5. Use it for discovery; use n8n_credentials_get when the ID is known. Returns metadata and a cursor, never credential values.",
     operation: "read-only",
+    outputDataDescription:
+      "Object with data (up to 100 credential metadata records) and nextCursor (string or null). Records contain allowlisted metadata only; credential values are rejected.",
     input: { limit: pageLimit(), cursor: cursor.optional() },
-    handler: async (input, context) =>
-      credentialListSchema.parse(
+    handler: async (input, context) => {
+      const page = credentialListSchema.parse(
         await context.client().request({
           path: "/credentials",
           query: { limit: numberQuery(input.limit), cursor: input.cursor },
         }),
-      ),
+      );
+      return { ...page, nextCursor: page.nextCursor ?? null };
+    },
   }),
   defineTool({
     name: "n8n_credentials_get",
     title: "Get credential",
-    description: "Get public metadata for one credential without retrieving secret values.",
+    description:
+      "Get public metadata for one stored credential. Use it when the ID is known; use n8n_credentials_list for discovery and n8n_credentials_schema for type fields. Returns validated metadata without retrieving secret values.",
     operation: "read-only",
-    input: { credentialId: identifier() },
+    outputDataDescription:
+      "One validated credential metadata record with id, name, type, optional timestamps, managed/global flags, and resolvability; no stored credential values.",
+    input: { credentialId: identifier("Stable ID of the credential metadata to retrieve.") },
     handler: async (input, context) =>
       credentialMetadataSchema.parse(
         await context.client().request({ path: `/credentials/${pathSegment(input.credentialId)}` }),
@@ -141,20 +186,39 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_credentials_update",
     title: "Update credential",
     description:
-      "Update credential metadata or values while keeping secret material out of output and logs.",
+      "Update selected metadata or values on an existing credential. Use n8n_credentials_schema for data fields; use n8n_credentials_create for a new credential. Supply at least one field, and data when changing type; returns metadata without secret values.",
     operation: "write",
+    outputDataDescription:
+      "Updated credential metadata with id, name, type, optional timestamps, managed/global flags, and resolvability. Supplied credential values are never echoed.",
     destructive: true,
     input: {
-      credentialId: identifier(),
-      name: z.string().min(1).max(128).optional(),
+      credentialId: identifier("Stable ID of the credential to update."),
+      name: z
+        .string()
+        .min(1)
+        .max(128)
+        .optional()
+        .describe("Replacement human-readable credential name (1-128 characters)."),
       type: z
         .string()
         .regex(/^[A-Za-z0-9_.-]{1,128}$/)
-        .optional(),
-      data: z.record(safeJsonValue).optional(),
-      isGlobal: z.boolean().optional(),
-      isResolvable: z.boolean().optional(),
-      isPartialData: z.boolean().default(false),
+        .optional()
+        .describe("Replacement public credential type; requires replacement data when supplied."),
+      data: z
+        .record(safeJsonValue)
+        .optional()
+        .describe("Replacement or partial credential field values; never returned."),
+      isGlobal: z.boolean().optional().describe("Optional replacement for the n8n global flag."),
+      isResolvable: z
+        .boolean()
+        .optional()
+        .describe("Optional replacement for the n8n resolvability flag."),
+      isPartialData: z
+        .boolean()
+        .default(false)
+        .describe(
+          "Treat supplied data as partial rather than complete replacement data (default false).",
+        ),
     },
     handler: async (input, context) => {
       if (
@@ -189,10 +253,16 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
   defineTool({
     name: "n8n_credentials_test",
     title: "Test credential",
-    description: "Test one stored credential. This may contact the credential's external service.",
+    description:
+      "Test one stored credential by allowing n8n to contact its external service. Use n8n_credentials_get for metadata-only inspection; do not call this when network contact is unwanted. Unsafe mode and exact confirmation are required; returns a bounded value-free status.",
     operation: "unsafe",
+    outputDataDescription:
+      "Object with credentialId, bounded status (at most 64 characters), optional message (at most 512 characters), and truncated=true when either upstream string was shortened.",
     openWorld: true,
-    input: { credentialId: identifier(), confirmation },
+    input: {
+      credentialId: identifier("Stable ID of the stored credential to test."),
+      confirmation,
+    },
     confirmation: (input) => ({
       supplied: input.confirmation,
       expected: `TEST ${input.credentialId}`,
@@ -223,13 +293,19 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
   defineTool({
     name: "n8n_credentials_usage",
     title: "Find credential usage",
-    description: "Scan one bounded workflow page for exact references to one credential ID.",
+    description:
+      "Scan one bounded workflow page for exact references to a credential ID. Use it before n8n_credentials_update or deletion; use n8n_credentials_get for metadata only. Continue nextCursor for full coverage; returns matching workflows/nodes and unresolved counts.",
     operation: "read-only",
+    outputDataDescription:
+      "Object with credentialId, workflowsExamined, matchingWorkflowCount, workflows with at most 200 total node details and 20 per workflow, nextCursor, scanComplete, truncation counts, referencesScanned, and referencesUnresolved.",
     input: {
-      credentialId: identifier(),
+      credentialId: identifier("Stable credential ID whose workflow references should be found."),
       cursor: cursor.optional(),
       limit: pageLimit(100, 50),
-      active: z.boolean().optional(),
+      active: z
+        .boolean()
+        .optional()
+        .describe("When supplied, scan only active or inactive workflows."),
     },
     handler: async (input, context) => {
       const page = usageListSchema.parse(

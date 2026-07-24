@@ -55,6 +55,7 @@ jobs:
           test "$(git cat-file -t "${RELEASE_TAG}")" = "tag"
           version="$(node -p 'require("./package.json").version')"
           test "${RELEASE_TAG}" = "v${version}"
+          test "$(node -p 'require("./package.json").releaseState')" = "candidate"
           test "$(git rev-list -n 1 "${RELEASE_TAG}")" = "${GITHUB_SHA}"
           git fetch --no-tags origin main:refs/remotes/origin/main
           git merge-base --is-ancestor "${GITHUB_SHA}" refs/remotes/origin/main
@@ -164,6 +165,7 @@ jobs:
           test "$(git cat-file -t "${RELEASE_TAG}")" = "tag"
           test "$(git rev-list -n 1 "${RELEASE_TAG}")" = "${GITHUB_SHA}"
           test "$(node -p 'require("./package.json").private === true ? "private" : "public"')" = "public"
+          test "$(node -p 'require("./package.json").releaseState')" = "candidate"
           test "$(node -p 'require("./release/mcpb-signing-policy.json").status')" = "active"
           (
             cd release-artifacts

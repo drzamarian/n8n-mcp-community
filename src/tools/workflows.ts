@@ -1,5 +1,10 @@
 import { z } from "zod";
 import { N8nApiError, type N8nClient } from "../n8n/client.js";
+import {
+  boundedJson,
+  sanitizeForOutput,
+  sanitizePathSegmentForOutput,
+} from "../security/redaction.js";
 import { defineTool, type ToolDefinition } from "./definition.js";
 import {
   assertBoundedDepth,
@@ -16,7 +21,8 @@ import {
   setUnknownPath,
   validateDotPath,
 } from "./schemas.js";
-import { booleanQuery, numberQuery, projectMetadata } from "./common.js";
+import { booleanQuery, numberQuery } from "./common.js";
+import { parseWorkflowLifecycleMetadata } from "./response-contracts.js";
 
 // Trusted server-returned workflow data is carried through unchanged (large or prototype-named
 // pinned data must survive), but it still recurses through structuredClone and canonicalization,
@@ -37,10 +43,14 @@ const nodeSchema = z
     name: z.string().min(1).max(256),
     type: z.string().min(1).max(256),
     typeVersion: z.number().finite().positive().max(10_000),
-    position: z.tuple([z.number().finite(), z.number().finite()]),
+    position: z
+      .array(z.number().finite())
+      .length(2)
+      .describe("Node canvas position as exactly two finite numbers."),
     parameters: z.record(z.unknown()).default({}),
     credentials: z.record(z.unknown()).optional(),
     disabled: z.boolean().optional(),
+    webhookId: identifier("Stable dynamic-webhook routing identifier when present.").optional(),
   })
   .passthrough();
 
@@ -109,14 +119,46 @@ function boundedTagCollection(value: unknown) {
 }
 
 const workflowWriteFields = {
-  name: z.string().min(1).max(128).optional(),
-  description: z.string().max(16_384).optional(),
-  nodes: z.array(nodeSchema).max(1_000).optional(),
-  connections: connectionsSchema.optional(),
-  settings: z.record(z.unknown()).optional(),
-  pinData: z.record(z.unknown()).nullable().optional(),
-  staticData: staticDataSchema.optional(),
-  nodeGroups: z.array(safeJsonValue).max(1_000).optional(),
+  name: z
+    .string()
+    .min(1)
+    .max(128)
+    .optional()
+    .describe("Replacement workflow name (1-128 characters)."),
+  description: z
+    .string()
+    .max(16_384)
+    .optional()
+    .describe("Replacement workflow description (up to 16,384 characters)."),
+  nodes: z
+    .array(nodeSchema)
+    .max(1_000)
+    .optional()
+    .describe(
+      "Complete replacement node array when supplied. Omit this field to preserve the existing array; nodes absent from a supplied array are removed.",
+    ),
+  connections: connectionsSchema
+    .optional()
+    .describe("Complete replacement connection graph keyed by node name."),
+  settings: z
+    .record(z.unknown())
+    .optional()
+    .describe("Complete replacement workflow settings object."),
+  pinData: z
+    .record(z.unknown())
+    .nullable()
+    .optional()
+    .describe(
+      "Complete replacement pinned-data map, or null to clear it; values are never returned.",
+    ),
+  staticData: staticDataSchema
+    .optional()
+    .describe("Complete replacement static workflow data; values are never returned."),
+  nodeGroups: z
+    .array(safeJsonValue)
+    .max(1_000)
+    .optional()
+    .describe("Complete replacement node-group array containing safe JSON values."),
 };
 
 type Workflow = z.output<typeof workflowSchema>;
@@ -388,14 +430,231 @@ interface DiffChange {
   readonly nodeName?: string;
   readonly nodeType?: string;
   readonly fields?: readonly string[];
+  readonly parameterChanges?: readonly ParameterChange[];
+  readonly parameterChangesTruncated?: true;
+  readonly omittedParameterChanges?: number;
+  readonly referenceChanged?: true;
   readonly changed?: true;
+}
+
+type DiffValueType = "array" | "boolean" | "null" | "number" | "object" | "string" | "unsupported";
+
+interface ParameterState {
+  readonly present: boolean;
+  readonly type: DiffValueType | null;
+}
+
+interface ParameterChange {
+  readonly path: readonly string[];
+  readonly pathRedacted?: true;
+  readonly before: ParameterState;
+  readonly after: ParameterState;
+  readonly changed: true;
+}
+
+interface PendingParameterChange {
+  readonly beforePresent: boolean;
+  readonly beforeValue: unknown;
+  readonly afterPresent: boolean;
+  readonly afterValue: unknown;
+  readonly path: readonly string[];
+  readonly pathRedacted: boolean;
+}
+
+const MAX_PARAMETER_PATH_SEGMENTS = 16;
+const MAX_PARAMETER_CHANGE_DETAILS = 200;
+// Fit the exact sanitized MCP success envelope with headroom below the shared 256 KiB
+// transport ceiling. This accounts for NFKC expansion, redaction markers, selectors,
+// summaries, coverage, omission metadata, and pretty-print indentation.
+const MAX_WORKFLOW_DIFF_OUTPUT_BYTES = 128 * 1024;
+
+function diffValueType(value: unknown): DiffValueType {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  if (isRecord(value)) return "object";
+  if (typeof value === "boolean") return "boolean";
+  if (typeof value === "number") return "number";
+  if (typeof value === "string") return "string";
+  return "unsupported";
+}
+
+function parameterState(present: boolean, value: unknown): ParameterState {
+  return {
+    present,
+    type: present ? diffValueType(value) : null,
+  };
+}
+
+function collectParameterChanges(
+  before: Readonly<Record<string, unknown>>,
+  after: Readonly<Record<string, unknown>>,
+  detailLimit: number,
+): { readonly changes: readonly ParameterChange[]; readonly total: number } {
+  const stack: PendingParameterChange[] = [];
+  const rootKeys = [...new Set([...Object.keys(before), ...Object.keys(after)])].sort();
+  for (let index = rootKeys.length - 1; index >= 0; index -= 1) {
+    const key = rootKeys[index];
+    if (key === undefined) continue;
+    const safeKey = sanitizePathSegmentForOutput(key);
+    stack.push({
+      beforePresent: Object.hasOwn(before, key),
+      beforeValue: before[key],
+      afterPresent: Object.hasOwn(after, key),
+      afterValue: after[key],
+      path: ["parameters", safeKey.value],
+      pathRedacted: safeKey.redacted,
+    });
+  }
+
+  const changes: ParameterChange[] = [];
+  let total = 0;
+  while (stack.length > 0) {
+    const candidate = stack.pop();
+    if (!candidate) continue;
+    const beforeType = candidate.beforePresent ? diffValueType(candidate.beforeValue) : undefined;
+    const afterType = candidate.afterPresent ? diffValueType(candidate.afterValue) : undefined;
+
+    if (
+      candidate.beforePresent &&
+      candidate.afterPresent &&
+      beforeType === "object" &&
+      afterType === "object" &&
+      candidate.path.length < MAX_PARAMETER_PATH_SEGMENTS &&
+      !candidate.pathRedacted
+    ) {
+      const beforeObject = candidate.beforeValue as Readonly<Record<string, unknown>>;
+      const afterObject = candidate.afterValue as Readonly<Record<string, unknown>>;
+      const keys = [...new Set([...Object.keys(beforeObject), ...Object.keys(afterObject)])].sort();
+      for (let index = keys.length - 1; index >= 0; index -= 1) {
+        const key = keys[index];
+        if (key === undefined) continue;
+        const safeKey = sanitizePathSegmentForOutput(key);
+        stack.push({
+          beforePresent: Object.hasOwn(beforeObject, key),
+          beforeValue: beforeObject[key],
+          afterPresent: Object.hasOwn(afterObject, key),
+          afterValue: afterObject[key],
+          path: [...candidate.path, safeKey.value],
+          pathRedacted: candidate.pathRedacted || safeKey.redacted,
+        });
+      }
+      continue;
+    }
+
+    if (
+      candidate.beforePresent === candidate.afterPresent &&
+      equivalent(candidate.beforeValue, candidate.afterValue)
+    ) {
+      continue;
+    }
+
+    total += 1;
+    if (changes.length >= detailLimit) continue;
+    changes.push({
+      path: candidate.path,
+      ...(candidate.pathRedacted ? { pathRedacted: true } : {}),
+      before: parameterState(candidate.beforePresent, candidate.beforeValue),
+      after: parameterState(candidate.afterPresent, candidate.afterValue),
+      changed: true,
+    });
+  }
+  return { changes, total };
+}
+
+function withParameterDetails(
+  change: DiffChange,
+  parameterChanges: readonly ParameterChange[],
+): DiffChange {
+  const originalParameterChanges = change.parameterChanges;
+  const originalOmittedParameterChanges = change.omittedParameterChanges;
+  const totalParameterChanges =
+    (originalParameterChanges?.length ?? 0) + (originalOmittedParameterChanges ?? 0);
+  const omittedParameterChanges = totalParameterChanges - parameterChanges.length;
+  return {
+    kind: change.kind,
+    ...(change.nodeId === undefined ? {} : { nodeId: change.nodeId }),
+    ...(change.nodeName === undefined ? {} : { nodeName: change.nodeName }),
+    ...(change.nodeType === undefined ? {} : { nodeType: change.nodeType }),
+    ...(change.fields === undefined ? {} : { fields: change.fields }),
+    ...(change.referenceChanged === undefined ? {} : { referenceChanged: change.referenceChanged }),
+    ...(change.changed === undefined ? {} : { changed: change.changed }),
+    parameterChanges,
+    ...(omittedParameterChanges > 0
+      ? {
+          parameterChangesTruncated: true as const,
+          omittedParameterChanges,
+        }
+      : {}),
+  };
+}
+
+function workflowDiffOutput(
+  base: Readonly<Record<string, unknown>>,
+  totalChanges: number,
+  changes: readonly DiffChange[],
+): Record<string, unknown> {
+  return {
+    ...base,
+    changes,
+    truncated: changes.length < totalChanges,
+    omittedDetails: totalChanges - changes.length,
+  };
+}
+
+function changesFitOutputBudget(
+  base: Readonly<Record<string, unknown>>,
+  totalChanges: number,
+  changes: readonly DiffChange[],
+): boolean {
+  try {
+    boundedJson(
+      sanitizeForOutput(workflowDiffOutput(base, totalChanges, changes)),
+      MAX_WORKFLOW_DIFF_OUTPUT_BYTES,
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function fitChangesToOutputBudget(
+  base: Readonly<Record<string, unknown>>,
+  changes: readonly DiffChange[],
+): Record<string, unknown> {
+  const totalChanges = changes.length;
+  const candidates = changes.slice(0, 200);
+  const fitted: DiffChange[] = [];
+  for (const change of candidates) {
+    if (change.parameterChanges === undefined) {
+      if (!changesFitOutputBudget(base, totalChanges, [...fitted, change])) break;
+      fitted.push(change);
+      continue;
+    }
+
+    let acceptedParameterChanges: readonly ParameterChange[] = [];
+    let candidate = withParameterDetails(change, acceptedParameterChanges);
+    if (!changesFitOutputBudget(base, totalChanges, [...fitted, candidate])) break;
+    for (const parameterChange of change.parameterChanges) {
+      const nextParameterChanges = [...acceptedParameterChanges, parameterChange];
+      const nextCandidate = withParameterDetails(change, nextParameterChanges);
+      if (!changesFitOutputBudget(base, totalChanges, [...fitted, nextCandidate])) break;
+      acceptedParameterChanges = nextParameterChanges;
+      candidate = nextCandidate;
+    }
+    fitted.push(candidate);
+  }
+  return workflowDiffOutput(base, totalChanges, fitted);
 }
 
 function computeWorkflowDiff(
   from: DiffSnapshot,
   to: DiffSnapshot,
   ignoreLayout: boolean,
-): Record<string, unknown> {
+): {
+  readonly summary: Readonly<Record<string, unknown>>;
+  readonly comparisonCoverage: Readonly<Record<string, unknown>>;
+  readonly changes: readonly DiffChange[];
+} {
   const fromNodes = new Map(from.nodes.map((node) => [node.id, node]));
   const toNodes = new Map(to.nodes.map((node) => [node.id, node]));
   if (fromNodes.has(undefined) || toNodes.has(undefined)) {
@@ -415,6 +674,7 @@ function computeWorkflowDiff(
   let added = 0;
   let removed = 0;
   let modified = 0;
+  let remainingParameterDetails = MAX_PARAMETER_CHANGE_DETAILS;
 
   for (const id of ids) {
     const before = fromNodes.get(id);
@@ -439,14 +699,17 @@ function computeWorkflowDiff(
     if (before.name !== after.name) fields.push("name");
     if (before.type !== after.type) fields.push("type");
     if (before.typeVersion !== after.typeVersion) fields.push("typeVersion");
-    if (!equivalent(before.parameters, after.parameters)) fields.push("parameters");
-    if (!equivalent(before.credentials ?? {}, after.credentials ?? {})) {
+    const parametersChanged = !equivalent(before.parameters, after.parameters);
+    if (parametersChanged) fields.push("parameters");
+    const credentialsChanged = !equivalent(before.credentials ?? {}, after.credentials ?? {});
+    if (credentialsChanged) {
       fields.push("credentialReferences");
     }
     if ((before.disabled ?? false) !== (after.disabled ?? false)) fields.push("disabled");
     if (!ignoreLayout && !equivalent(before.position, after.position)) fields.push("position");
     const beforeRecord = before as unknown as Record<string, unknown>;
     const afterRecord = after as unknown as Record<string, unknown>;
+    if (!equivalent(beforeRecord.webhookId, afterRecord.webhookId)) fields.push("webhookId");
     for (const field of MUTABLE_NODE_ROOTS) {
       if (field === "parameters" || field === "position" || field === "disabled") continue;
       const beforeValue = beforeRecord[field];
@@ -459,19 +722,40 @@ function computeWorkflowDiff(
     }
     if (fields.length > 0) {
       modified += 1;
+      const parameterDiff = parametersChanged
+        ? collectParameterChanges(
+            before.parameters,
+            after.parameters,
+            Math.max(0, remainingParameterDetails),
+          )
+        : undefined;
+      remainingParameterDetails -= parameterDiff?.changes.length ?? 0;
+      const omittedParameterChanges =
+        parameterDiff === undefined ? 0 : parameterDiff.total - parameterDiff.changes.length;
       changes.push({
         kind: "node_modified",
         nodeId: id,
         nodeName: after.name,
         nodeType: after.type,
         fields,
+        ...(parameterDiff === undefined
+          ? {}
+          : {
+              parameterChanges: parameterDiff.changes,
+              ...(omittedParameterChanges > 0
+                ? {
+                    parameterChangesTruncated: true as const,
+                    omittedParameterChanges,
+                  }
+                : {}),
+            }),
+        ...(credentialsChanged ? { referenceChanged: true as const } : {}),
       });
     }
   }
 
   const connectionsChanged = !equivalent(from.connections, to.connections);
   if (connectionsChanged) changes.push({ kind: "connections_changed", changed: true });
-  const ordered = changes.slice(0, 200);
   return {
     summary: {
       workflowNameChanged,
@@ -491,9 +775,7 @@ function computeWorkflowDiff(
       staticData: "unavailable_historical_api",
       nodeGroups: "unavailable_historical_api",
     },
-    changes: ordered,
-    truncated: ordered.length < changes.length,
-    omittedDetails: changes.length - ordered.length,
+    changes,
   };
 }
 
@@ -531,13 +813,33 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
   defineTool({
     name: "n8n_workflows_list",
     title: "List workflows",
-    description: "List workflows visible to the configured n8n Public API key.",
+    description:
+      "List one page of workflows visible to the configured API key. Use it for unsearched discovery; use n8n_search_workflows for local substring matching or n8n_workflows_get when the ID is known. Returns projected workflows and a cursor, never pin/static values.",
     operation: "read-only",
+    outputDataDescription:
+      "Object with data (up to 100 projected workflows) and nextCursor (string or null). Each workflow includes structure/state plus pinDataPresent and staticDataPresent presence markers, but never pinned or static values.",
     input: {
-      active: z.boolean().optional(),
-      tags: z.string().max(512).optional(),
-      name: z.string().min(1).max(128).optional(),
-      excludePinnedData: z.boolean().default(true),
+      active: z
+        .boolean()
+        .optional()
+        .describe("When supplied, return only active or inactive workflows."),
+      tags: z
+        .string()
+        .max(512)
+        .optional()
+        .describe("Optional n8n Public API tag filter (up to 512 characters)."),
+      name: z
+        .string()
+        .min(1)
+        .max(128)
+        .optional()
+        .describe("Optional workflow-name filter passed to n8n (1-128 characters)."),
+      excludePinnedData: z
+        .boolean()
+        .default(true)
+        .describe(
+          "Ask n8n to omit pinned values; values are withheld from output regardless (default true).",
+        ),
       limit: pageLimit(),
       cursor: cursor.optional(),
     },
@@ -564,9 +866,20 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
   defineTool({
     name: "n8n_workflows_get",
     title: "Get workflow",
-    description: "Get one workflow by its stable ID.",
+    description:
+      "Get one current workflow by stable ID for inspection or reviewed editing. Use n8n_workflows_get_version for retained history or n8n_workflows_list for discovery. Returns structure, state, settings, and presence flags; pin/static values are always withheld.",
     operation: "read-only",
-    input: { workflowId: identifier(), excludePinnedData: z.boolean().default(true) },
+    outputDataDescription:
+      "Current workflow projection with id, optional versionId/description/state, name, nodes, connections, settings, and pinDataPresent/staticDataPresent markers. Pinned and static values are never returned.",
+    input: {
+      workflowId: identifier("Stable ID of the current workflow to retrieve."),
+      excludePinnedData: z
+        .boolean()
+        .default(true)
+        .describe(
+          "Ask n8n to omit pinned values; values are withheld from output regardless (default true).",
+        ),
+    },
     handler: async (input, context) =>
       workflowForOutput(
         workflowSchema.parse(
@@ -581,17 +894,45 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
   defineTool({
     name: "n8n_workflows_create",
     title: "Create workflow",
-    description: "Create a workflow from validated nodes, connections, and settings.",
+    description:
+      "Create one workflow from a complete validated definition. Use it for a new workflow; use n8n_workflows_update for an existing workflow and n8n_workflows_activate separately for triggers. Validates the graph and returns a projection without pin/static values.",
     operation: "write",
+    outputDataDescription:
+      "Created workflow projection with id, optional versionId/description/state, name, nodes, connections, settings, and withheld pin/static presence markers. Pinned and static values are never returned.",
     input: {
-      name: z.string().min(1).max(128),
-      description: z.string().max(16_384).optional(),
-      nodes: z.array(nodeSchema).min(1).max(1_000),
-      connections: connectionsSchema,
-      settings: z.record(z.unknown()).default({}),
-      nodeGroups: z.array(safeJsonValue).max(1_000).optional(),
-      staticData: staticDataSchema.optional(),
-      pinData: z.record(z.unknown()).nullable().optional(),
+      name: z.string().min(1).max(128).describe("Workflow name (1-128 characters)."),
+      description: z
+        .string()
+        .max(16_384)
+        .optional()
+        .describe("Optional workflow description (up to 16,384 characters)."),
+      nodes: z
+        .array(nodeSchema)
+        .min(1)
+        .max(1_000)
+        .describe(
+          "Complete non-empty node array with unique names; supplied IDs, when present, must also be unique.",
+        ),
+      connections: connectionsSchema.describe(
+        "Complete connection graph keyed by existing node names.",
+      ),
+      settings: z
+        .record(z.unknown())
+        .default({})
+        .describe("Workflow settings object (default empty object)."),
+      nodeGroups: z
+        .array(safeJsonValue)
+        .max(1_000)
+        .optional()
+        .describe("Optional node-group array containing safe JSON values."),
+      staticData: staticDataSchema
+        .optional()
+        .describe("Optional static workflow data; accepted for creation but never returned."),
+      pinData: z
+        .record(z.unknown())
+        .nullable()
+        .optional()
+        .describe("Optional pinned-data map or null; accepted for creation but never returned."),
     },
     handler: async (input, context) => {
       assertSafeJson(input);
@@ -608,10 +949,19 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
   defineTool({
     name: "n8n_workflows_update",
     title: "Update workflow",
-    description: "Update selected workflow fields while preserving omitted writable fields.",
+    description:
+      "Update selected top-level workflow fields while preserving omitted writable fields. Use n8n_update_node for one node property and n8n_workflows_update_tags for tag assignments. Requires the current versionId, performs a non-atomic full PUT, and returns the confirmed projection.",
     operation: "write",
+    outputDataDescription:
+      "Confirmed updated workflow projection with id, version/state, name, optional description, nodes, connections, settings, and withheld pin/static presence markers. Omitted writable fields come from the immediate pre-write read.",
     destructive: true,
-    input: { workflowId: identifier(), expectedVersionId: identifier(), ...workflowWriteFields },
+    input: {
+      workflowId: identifier("Stable ID of the workflow to update."),
+      expectedVersionId: identifier(
+        "Current workflow versionId that must still match before the PUT.",
+      ),
+      ...workflowWriteFields,
+    },
     handler: async (input, context) => {
       if (
         [
@@ -689,16 +1039,28 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_update_node",
     title: "Update one workflow node",
     description:
-      "Update one validated node property while preserving the rest of the workflow. The Public API has no atomic compare-and-swap, so explicit non-atomic risk acknowledgement is required.",
+      "Update one validated mutable property on one workflow node while preserving the rest. Use it instead of n8n_workflows_update for a single-node change; use the full update for top-level or multi-node edits. Requires version/risk guards and returns the path plus non-atomic risk.",
     operation: "write",
+    outputDataDescription:
+      "Object with workflowId, versionId, nodeId, path, updated=true, atomic=false, and residualRisk describing the Public API's non-atomic full-workflow PUT limitation.",
     destructive: true,
     input: {
-      workflowId: identifier(),
-      nodeId: identifier(),
-      path: z.string().min(1).max(512),
-      value: requiredSafeJsonValue,
-      expectedVersionId: identifier(),
-      acknowledgeNonAtomicRisk: z.literal(true),
+      workflowId: identifier("Stable ID of the workflow containing the target node."),
+      nodeId: identifier("Unique stable ID of the single node to update."),
+      path: z
+        .string()
+        .min(1)
+        .max(512)
+        .describe(
+          "Allowed dot path under a mutable node field, such as parameters.url or disabled.",
+        ),
+      value: requiredSafeJsonValue.describe("Safe JSON value to write at the selected node path."),
+      expectedVersionId: identifier(
+        "Current workflow versionId that must still match before the PUT.",
+      ),
+      acknowledgeNonAtomicRisk: z
+        .literal(true)
+        .describe("Must be true to acknowledge that n8n exposes a non-atomic full-workflow PUT."),
     },
     handler: async (input, context) => {
       const segments = validateDotPath(input.path);
@@ -774,9 +1136,12 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
   defineTool({
     name: "n8n_workflows_delete",
     title: "Delete workflow",
-    description: "Permanently delete one workflow after an exact confirmation.",
+    description:
+      "Permanently delete one workflow and its saved definition. Use n8n_workflows_archive when reversible removal is sufficient and n8n_workflows_get for inspection. Unsafe mode and exact target confirmation are required; returns the ID with deleted=true.",
     operation: "unsafe",
-    input: { workflowId: identifier(), confirmation },
+    outputDataDescription:
+      "Object with the validated input workflowId and deleted=true. Identity is bound to the request and does not rely on an upstream response body.",
+    input: { workflowId: identifier("Stable ID of the workflow to delete."), confirmation },
     confirmation: (input) => ({
       supplied: input.confirmation,
       expected: `DELETE ${input.workflowId}`,
@@ -792,28 +1157,48 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
     defineTool({
       name: `n8n_workflows_${action}`,
       title: `${action === "activate" ? "Activate" : "Deactivate"} workflow`,
-      description: `${action === "activate" ? "Activate" : "Deactivate"} one workflow after exact confirmation.`,
+      description:
+        action === "activate"
+          ? "Activate one workflow so production triggers can accept future events. Use it only after n8n_workflows_get review; use n8n_workflows_deactivate to stop future triggers. Unsafe mode and exact confirmation are required; returns allowlisted state metadata."
+          : "Deactivate one workflow's production triggers without deleting saved data or stopping current work. Use n8n_workflows_activate to reverse this state or n8n_workflows_archive for lifecycle removal. Unsafe mode and exact confirmation are required; returns state metadata.",
       operation: "unsafe",
-      input: { workflowId: identifier(), confirmation },
+      outputDataDescription:
+        action === "activate"
+          ? "Target-bound workflow metadata with required id and active=true; optional name, type, archive state, versionId, and timestamps are included when supplied by n8n, while all other fields are omitted."
+          : "Target-bound workflow metadata with required id and active=false; optional name, type, archive state, versionId, and timestamps are included when supplied by n8n, while all other fields are omitted.",
+      input: {
+        workflowId: identifier(
+          `Stable ID of the workflow to ${action === "activate" ? "activate" : "deactivate"}.`,
+        ),
+        confirmation,
+      },
       confirmation: (input) => ({
         supplied: input.confirmation,
         expected: `${action.toUpperCase()} ${input.workflowId}`,
       }),
       handler: async (input, context) =>
-        projectMetadata(
+        parseWorkflowLifecycleMetadata(
           await context.client().request({
             method: "POST",
             path: `/workflows/${pathSegment(input.workflowId)}/${action}`,
           }),
+          input.workflowId,
+          action,
         ),
     }),
   ),
   defineTool({
     name: "n8n_workflows_get_version",
     title: "Get workflow version",
-    description: "Get one retained historical workflow version.",
+    description:
+      "Get one retained historical workflow snapshot. Use it when exact historical nodes/connections are needed; use n8n_workflows_get for current state or n8n_workflows_diff for value-free comparison. Returns validated identity and structure, subject to Community retention.",
     operation: "read-only",
-    input: { workflowId: identifier(), versionId: identifier() },
+    outputDataDescription:
+      "Historical snapshot with workflowId, versionId, optional name, nodes, and connections. Historical settings, pin data, and static data are unavailable from the supported Public API.",
+    input: {
+      workflowId: identifier("Stable ID of the workflow whose retained history is requested."),
+      versionId: identifier("Stable retained workflow version ID to retrieve."),
+    },
     handler: async (input, context) => {
       const historical = historicalWorkflowSchema.parse(
         await fetchWorkflowVersion(
@@ -828,9 +1213,14 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
   defineTool({
     name: "n8n_workflows_get_tags",
     title: "Get workflow tags",
-    description: "List the tags assigned to one workflow.",
+    description:
+      "List the tags currently assigned to one workflow. Use it before n8n_workflows_update_tags when assignments must be preserved; use n8n_tags_list to discover all available tags. Returns a bounded validated collection with exact truncation counts.",
     operation: "read-only",
-    input: { workflowId: identifier() },
+    outputDataDescription:
+      "Object with data (at most 100 validated tag records), totalCount, truncated, and exact omittedCount. Each tag may include id, name, createdAt, and updatedAt.",
+    input: {
+      workflowId: identifier("Stable ID of the workflow whose tag assignments are requested."),
+    },
     handler: async (input, context) =>
       boundedTagCollection(
         await context
@@ -841,10 +1231,23 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
   defineTool({
     name: "n8n_workflows_update_tags",
     title: "Update workflow tags",
-    description: "Replace the tags assigned to one workflow.",
+    description:
+      "Replace the complete tag assignment for one workflow; this is not a merge. Use n8n_workflows_get_tags first to preserve existing assignments and n8n_tags_create for a missing tag; an empty array clears all tags. Returns n8n's validated assignment.",
     operation: "write",
+    outputDataDescription:
+      "Array of at most 100 validated tag records returned by n8n after replacing the workflow's complete assignment. An empty returned array represents no assigned tags.",
     destructive: true,
-    input: { workflowId: identifier(), tagIds: z.array(identifier()).max(100) },
+    input: {
+      workflowId: identifier(
+        "Stable ID of the workflow whose complete tag assignment will be replaced.",
+      ),
+      tagIds: z
+        .array(identifier("Stable workflow tag ID to assign."))
+        .max(100)
+        .describe(
+          "Complete replacement list of up to 100 tag IDs; an empty array clears all assignments.",
+        ),
+    },
     handler: async (input, context) =>
       z
         .array(tagSchema)
@@ -861,19 +1264,33 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
     defineTool({
       name: `n8n_workflows_${action}`,
       title: `${action === "archive" ? "Archive" : "Unarchive"} workflow`,
-      description: `${action === "archive" ? "Archive" : "Restore"} one workflow after exact confirmation.`,
+      description:
+        action === "archive"
+          ? "Archive one workflow without deleting it. Use it instead of n8n_workflows_delete when reversible lifecycle removal is required; use n8n_workflows_deactivate only to stop triggers. Unsafe mode and exact confirmation are required; returns archive state."
+          : "Restore one archived workflow without activating it. Use it to reverse n8n_workflows_archive; call n8n_workflows_activate separately only if triggers should resume. Unsafe mode and exact confirmation are required; returns archive state.",
       operation: "unsafe",
-      input: { workflowId: identifier(), confirmation },
+      outputDataDescription:
+        action === "archive"
+          ? "Target-bound workflow metadata with required id and isArchived=true; optional name, type, active state, versionId, and timestamps are included when supplied by n8n, while all other fields are omitted."
+          : "Target-bound workflow metadata with required id and isArchived=false; optional name, type, active state, versionId, and timestamps are included when supplied by n8n, while all other fields are omitted.",
+      input: {
+        workflowId: identifier(
+          `Stable ID of the workflow to ${action === "archive" ? "archive" : "restore from archive"}.`,
+        ),
+        confirmation,
+      },
       confirmation: (input) => ({
         supplied: input.confirmation,
         expected: `${action.toUpperCase()} ${input.workflowId}`,
       }),
       handler: async (input, context) =>
-        projectMetadata(
+        parseWorkflowLifecycleMetadata(
           await context.client().request({
             method: "POST",
             path: `/workflows/${pathSegment(input.workflowId)}/${action}`,
           }),
+          input.workflowId,
+          action,
         ),
     }),
   ),
@@ -881,13 +1298,20 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_workflows_diff",
     title: "Compare workflow versions",
     description:
-      "Compare nodes and connections between two retained workflow snapshots without returning raw values.",
+      "Compare one retained workflow version with another or current state. Use it for value-free review; use n8n_workflows_get_version when raw historical structure is needed. Returns counts, coverage, and up to 200 changes; unavailable historical fields are explicit.",
     operation: "read-only",
+    outputDataDescription:
+      "Value-free comparison with workflowId, from/to selectors, comparisonCoverage, summary counts, byte-budgeted changes (up to 200), truncated, and exact omittedDetails. Modified nodes name changed fields; parameterChanges expose only sanitized paths, presence, value types, changed=true, and exact truncation metadata, while credential changes expose only referenceChanged=true. Raw values and webhook identifiers are never returned.",
     input: {
-      workflowId: identifier(),
-      fromVersionId: identifier(),
-      toVersionId: identifier().optional(),
-      ignoreLayout: z.boolean().default(true),
+      workflowId: identifier("Stable ID of the workflow whose versions will be compared."),
+      fromVersionId: identifier("Retained baseline version ID for the comparison."),
+      toVersionId: identifier(
+        "Optional retained target version ID; omit to compare with current.",
+      ).optional(),
+      ignoreLayout: z
+        .boolean()
+        .default(true)
+        .describe("Ignore node position-only changes when true (default true)."),
     },
     handler: async (input, context) => {
       if (input.toVersionId === input.fromVersionId) {
@@ -923,13 +1347,16 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
       if (from.workflowId !== input.workflowId || to.workflowId !== input.workflowId) {
         throw new Error("A workflow snapshot did not belong to the requested workflow.");
       }
-      return {
+      const computed = computeWorkflowDiff(from, to, input.ignoreLayout);
+      const base = {
         workflowId: input.workflowId,
         fromVersionId: input.fromVersionId,
         toVersionId: input.toVersionId ?? "current",
         ignoreLayout: input.ignoreLayout,
-        ...computeWorkflowDiff(from, to, input.ignoreLayout),
+        summary: computed.summary,
+        comparisonCoverage: computed.comparisonCoverage,
       };
+      return fitChangesToOutputBudget(base, computed.changes);
     },
   }),
 ]);

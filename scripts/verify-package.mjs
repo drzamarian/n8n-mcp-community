@@ -10,6 +10,10 @@ import { resolveNpmCli, resolveNpxInvocation, runPortableCommandSync } from "./p
 import { isForbiddenPublicPath } from "./public-boundary-policy.mjs";
 
 const root = process.cwd();
+const contributorMode = process.argv.length === 3 && process.argv[2] === "--contributor";
+if (process.argv.length > (contributorMode ? 3 : 2)) {
+  throw new Error("Usage: node scripts/verify-package.mjs [--contributor]");
+}
 const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "n8n-mcp-community-npm-"));
 const npmCli = resolveNpmCli("npm");
 const artifactBaseline = JSON.parse(
@@ -132,7 +136,9 @@ if (
 }
 
 await verifyPublicManifestRoundTrip();
-await verifyArtifactReviewForPackageState(root, sourceManifest.private);
+if (!contributorMode) {
+  await verifyArtifactReviewForPackageState(root, sourceManifest.private);
+}
 
 try {
   const packed = JSON.parse(
@@ -150,10 +156,11 @@ try {
   if (paths.length === 0) failures.push("artifact file list is empty");
   if (forbidden.length > 0) failures.push(`forbidden files: ${forbidden.join(", ")}`);
   if (
-    artifactBaseline.schemaVersion !== 1 ||
-    artifactBaseline.packageVersion !== artifact.version ||
-    artifactBaseline.npm.fileCount !== paths.length ||
-    JSON.stringify(artifactBaseline.npm.files) !== JSON.stringify(paths)
+    !contributorMode &&
+    (artifactBaseline.schemaVersion !== 1 ||
+      artifactBaseline.packageVersion !== artifact.version ||
+      artifactBaseline.npm.fileCount !== paths.length ||
+      JSON.stringify(artifactBaseline.npm.files) !== JSON.stringify(paths))
   ) {
     failures.push("npm artifact differs from the exact reviewed file manifest");
   }
@@ -161,7 +168,7 @@ try {
   if (failures.length > 0) throw new Error(failures.join("\n"));
 
   const tarball = path.join(temporaryRoot, artifact.filename);
-  if ((await digest(tarball)) !== artifactBaseline.npm.sha256) {
+  if (!contributorMode && (await digest(tarball)) !== artifactBaseline.npm.sha256) {
     throw new Error(
       `npm artifact digest differs from the reviewed baseline. The digest covers exact artifact bytes: a different Node.js zlib compresses identical content differently, and a platform-variant checkout or build (for example CRLF line endings) changes the content itself. Baselines are generated on the pinned release runtime from an LF tree; this process is Node.js ${process.versions.node}.`,
     );
@@ -231,8 +238,9 @@ try {
   const installedPackagePaths = Object.entries(installedLock.packages ?? {}).filter(
     ([directory]) => directory !== "",
   );
+  const expectedInstalledPackagePaths = Object.keys(productionPackages).length + 1;
   if (
-    installedPackagePaths.length !== 94 ||
+    installedPackagePaths.length !== expectedInstalledPackagePaths ||
     installedPackagePaths.some(([, entry]) => entry?.dev === true)
   ) {
     throw new Error("Installed npm artifact differs from the production dependency inventory.");
@@ -304,7 +312,9 @@ try {
         unpackedSizeBytes: artifact.unpackedSize,
         ...inventory,
         productionPackagePaths: installedPackagePaths.length,
-        cleanInstall: true,
+        reviewedArtifactInstall: true,
+        artifactBaselineVerified: !contributorMode,
+        realConsumerResolutionVerified: false,
         npxSmoke: true,
         status: "pass",
       },

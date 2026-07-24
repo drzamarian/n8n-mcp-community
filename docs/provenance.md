@@ -86,8 +86,10 @@ npm run sbom > sbom.cdx.json
 This runtime-only SBOM contains 75 unique production components for the shared
 npm/MCPB runtime graph. Maintainers may separately generate the complete
 222-component development graph with `npm run sbom:full`; it is audit evidence,
-not the release artifact SBOM. The first public release will attach the runtime
-SBOM for the npm package and MCPB, plus SHA-256 checksums and signatures tied to the exact Git revision.
+not the release artifact SBOM. Every release candidate must carry a runtime
+SBOM for the npm package and MCPB, plus SHA-256 checksums and signatures tied to
+the exact Git revision; availability is established only by the corresponding
+published-release readbacks.
 The package and MCPB must be reconstructed from a clean checkout and match the
 documented inventory.
 

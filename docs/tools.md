@@ -16,8 +16,11 @@ result envelope in abbreviated form.
   page limits are integers from 1 through 100.
 - **Output:** every successful generic value is sanitized and wrapped as
   `{ "data": ..., "redacted": boolean, "untrusted": true }`; text and
-  structured MCP content carry the same value. The final serialized result is
-  limited to 256 KiB. When a successful write or unsafe operation produces a
+  structured MCP content carry the same value. Every generic tool publishes a
+  tool-specific `data` contract in `tools/list`; the sections below are the
+  normative human-readable detail. The sanitized envelope is validated against
+  that same contract before a success is returned. The final serialized result is limited to
+  256 KiB. When a successful write or unsafe operation produces a
   result above that cap, the tool reports a truncated success summary
   (`truncated: true`, `outcome: "success"`, and bounded identity fields)
   instead of an error, because the mutation has already been applied;
@@ -115,6 +118,9 @@ the caller.
 - **Returns:** the updated workflow projection. Omitted writable fields are
   copied from the validated immediate second read; pin/static values remain
   hidden.
+- **Replacement semantics:** omitting `nodes` preserves the existing node array;
+  supplying `nodes` replaces it completely, so nodes absent from that supplied
+  array are removed.
 - **Failures and privacy:** an empty update or either version mismatch fails
   before the PUT. Duplicate node names or defined IDs are rejected. This remains
   a full Public API PUT, not an atomic patch, so a small race window exists after
@@ -192,8 +198,9 @@ Activates one workflow so its production triggers may begin receiving events.
 - **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Activation can enable real triggers; the server does not execute workflows directly.
 - **Inputs:** required `workflowId`; `confirmation` must equal
   `ACTIVATE <workflowId>`.
-- **Returns:** allowlisted workflow metadata such as ID, active state, and
-  version when supplied by n8n.
+- **Returns:** target-bound workflow metadata with required `id` and
+  `active: true`; optional name, type, archive state, version, and timestamps
+  are included only when supplied by n8n.
 - **Failures and privacy:** denied mode/confirmation issues zero requests.
   Activation can cause external side effects later when triggers fire; review
   credentials, trigger exposure, and workflow behavior first.
@@ -210,7 +217,9 @@ Deactivates one workflow's production triggers.
 - **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Deactivation does not cancel work already running.
 - **Inputs:** required `workflowId`; `confirmation` must equal
   `DEACTIVATE <workflowId>`.
-- **Returns:** allowlisted workflow metadata.
+- **Returns:** target-bound workflow metadata with required `id` and
+  `active: false`; optional name, type, archive state, version, and timestamps
+  are included only when supplied by n8n.
 - **Failures and privacy:** denied mode/confirmation issues zero requests.
   Deactivation does not delete saved workflow or execution data and may not stop
   work that is already running.
@@ -284,7 +293,9 @@ Archives one workflow without deleting it.
 - **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Archive support is independent of paid project transfer features.
 - **Inputs:** required `workflowId`; `confirmation` must equal
   `ARCHIVE <workflowId>`.
-- **Returns:** allowlisted workflow state metadata.
+- **Returns:** target-bound workflow metadata with required `id` and
+  `isArchived: true`; optional name, type, active state, version, and
+  timestamps are included only when supplied by n8n.
 - **Failures and privacy:** denied mode/confirmation issues zero requests.
   Archiving changes workflow availability and should be treated as a disruptive
   lifecycle operation even though it is reversible.
@@ -301,7 +312,9 @@ Restores one archived workflow.
 - **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Restoring archive state does not activate the workflow.
 - **Inputs:** required `workflowId`; `confirmation` must equal
   `UNARCHIVE <workflowId>`.
-- **Returns:** allowlisted workflow state metadata.
+- **Returns:** target-bound workflow metadata with required `id` and
+  `isArchived: false`; optional name, type, active state, version, and
+  timestamps are included only when supplied by n8n.
 - **Failures and privacy:** denied mode/confirmation issues zero requests.
   Unarchiving does not imply activation; inspect returned state before taking a
   separate activation action.
@@ -325,10 +338,17 @@ version and either another retained version or the current workflow.
   Two explicit selectors must differ.
 - **Returns:** counts and up to 200 ordered changes for workflow-name changes,
   node add/remove/modify, and connections. Modified-node output names changed
-  fields, not their values. Absent and explicit `false` are treated as the same
-  value for default-false execution flags. Numeric retry settings remain
-  conservative: omitted versus explicit `maxTries` or `waitBetweenTries` is
-  reported because the Public API does not publish a version-stable default.
+  fields, including value-free `webhookId` routing changes. Parameter details
+  contain only a sanitized property path, before/after presence and JSON value
+  type, and `changed: true`; credential-reference changes contain only
+  `referenceChanged: true`. Raw parameter values, webhook identifiers, and
+  credential references are never returned. A deterministic global byte budget
+  keeps the result below the shared 256 KiB success limit; parameter or
+  top-level omissions retain separate exact counts. Absent and explicit
+  `false` are treated as the same value for default-false execution flags.
+  Numeric retry settings remain conservative: omitted versus explicit
+  `maxTries` or `waitBetweenTries` is reported because the Public API does not
+  publish a version-stable default.
   Coverage reports whether the name was available in
   both snapshots and explicitly marks description, settings, pin data, static
   data, and node groups as unavailable from the historical API.
@@ -485,14 +505,16 @@ Reads the Public API credential schema for one credential type.
 - **Requirements:** Requires connected configuration and API-key permission to inspect the requested public credential schema.
 - **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Only credential types exposed by the instance's Public API are available.
 - **Inputs:** required `credentialType`, containing 1–128 ASCII letters, digits,
-  `_`, or `-`.
-- **Returns:** the validated schema object supplied by n8n. It describes fields;
+  `.`, `_`, or `-`.
+- **Returns:** the validated JSON Schema supplied by n8n, with
+  `additionalProperties: false`, `type: "object"`, typed `properties`, required
+  fields, and optional conditional dependencies. It describes accepted fields;
   it does not return stored credential values.
 - **Failures and privacy:** invalid type names fail locally; unsupported types or
   malformed schemas return sanitized errors. Schema labels remain untrusted
   instance content.
 - **Example:** `{ "credentialType": "httpHeaderAuth" }` →
-  `{ "data": { "fields": [{ "name": "name", "type": "string" }] }, "redacted": false, "untrusted": true }`.
+  `{ "data": { "additionalProperties": false, "type": "object", "properties": { "name": { "type": "string" }, "value": { "type": "string" } }, "required": ["name", "value"] }, "redacted": false, "untrusted": true }`.
 
 ## n8n_credentials_list
 
@@ -809,12 +831,15 @@ this server applies the conservative unsafe policy.
   optional `daysAbandonedWorkflow` integer from 1 through 3,650; required
   `confirmation` must equal `GENERATE AUDIT`. Options are sent under the
   official `additionalOptions` request property.
-- **Returns:** the bounded audit report object supplied by n8n.
+- **Returns:** a bounded map of n8n-defined report titles. Every report has an
+  official `risk` category and typed `sections`; sections contain a title,
+  description, recommendation, and either typed credential/node/package/file
+  locations or bounded instance settings and version details.
 - **Failures and privacy:** instance-wide audit output can reveal sensitive
   security posture and remains untrusted. Unsupported categories, permissions,
   versions, or malformed reports return sanitized errors.
-- **Example:** `{ "categories": ["credentials", "nodes"], "daysAbandonedWorkflow": 30, "confirmation": "GENERATE AUDIT" }` →
-  `{ "data": { "risk": [] }, "redacted": false, "untrusted": true }`.
+- **Example:** `{ "categories": ["credentials"], "daysAbandonedWorkflow": 30, "confirmation": "GENERATE AUDIT" }` →
+  `{ "data": { "Credentials Risk Report": { "risk": "credentials", "sections": [{ "title": "Unused credentials", "description": "Credentials not used by any workflow.", "recommendation": "Delete credentials that are no longer required.", "location": [{ "kind": "credential", "id": "cred_1", "name": "n8n API" }] }] } }, "redacted": false, "untrusted": true }`.
 
 ## n8n_search_workflows
 

@@ -141,6 +141,32 @@ test("connection graph keys survive redaction while nested secret values do not"
   assert(JSON.stringify(result).includes("[REDACTED]"));
 });
 
+test("secret-bearing object keys are replaced in regular and structural maps", () => {
+  const providerKey = ["sk", "_live_", "51H8x2kJ9mQ0123456789"].join("");
+  const emailKey = ["member", "@example.test"].join("");
+  const result = sanitizeForOutput({
+    [providerKey]: "ordinary value",
+    connections: {
+      [emailKey]: { main: [[{ node: "Next", type: "main", index: 0 }]] },
+    },
+    properties: {
+      [providerKey]: { type: "string", default: "must-not-survive" },
+    },
+  });
+  const serialized = JSON.stringify(result);
+  const data = result.data as {
+    connections: Record<string, unknown>;
+    properties: Record<string, unknown>;
+  };
+  assert.equal(result.redacted, true);
+  assert.equal(serialized.includes(providerKey), false);
+  assert.equal(serialized.includes(emailKey), false);
+  assert.equal(serialized.includes("must-not-survive"), false);
+  assert(Object.keys(data).some((key) => key.startsWith("[REDACTED_KEY_")));
+  assert(Object.keys(data.connections).every((key) => key.startsWith("[REDACTED_KEY_")));
+  assert(Object.keys(data.properties).every((key) => key.startsWith("[REDACTED_KEY_")));
+});
+
 test("shared redaction closes structural, assignment, authorization, and sibling-value leaks", () => {
   const secret = "shared-redaction-secret-canary";
   const jwt = "eyJabcdefgh.ijklmnop.qrstuvwx";

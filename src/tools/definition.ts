@@ -5,8 +5,14 @@ import { z, type ZodRawShape } from "zod";
 import { readN8nConnection, type N8nConnectionConfig, type StartupConfig } from "../config.js";
 import { N8nClient } from "../n8n/client.js";
 import { authorizeOperation, type OperationClass } from "../security/operation-policy.js";
-import { boundedJson, sanitizeForOutput } from "../security/redaction.js";
+import {
+  boundedJson,
+  OutputLimitError,
+  sanitizeForOutput,
+  sanitizeForOutputDetailed,
+} from "../security/redaction.js";
 import { TOOL_ENDPOINT_CONTRACTS } from "./endpoint-contracts.js";
+import { genericToolOutputContract, MUTATION_IDENTITY_KEYS } from "./output-contracts.js";
 import { confirmation as confirmationField } from "./schemas.js";
 
 export interface ToolContext {
@@ -22,6 +28,7 @@ export interface ToolDefinition {
   readonly operation: OperationClass;
   readonly annotations: ToolAnnotations;
   readonly endpointContract: readonly string[];
+  readonly outputDataDescription: string;
   // The exact confirmation phrase template (e.g. "DELETE <workflowId>") for confirmation-guarded
   // tools, derived from the tool's own confirmation function; absent for tools without a guard.
   readonly confirmationPhrase?: string;
@@ -34,6 +41,7 @@ interface ToolSpec<Shape extends ZodRawShape> {
   readonly title: string;
   readonly description: string;
   readonly operation: OperationClass;
+  readonly outputDataDescription: string;
   readonly input: Shape;
   readonly confirmation?: (input: z.output<z.ZodObject<Shape>>) => {
     readonly supplied: string | undefined;
@@ -42,6 +50,7 @@ interface ToolSpec<Shape extends ZodRawShape> {
   readonly handler: (input: z.output<z.ZodObject<Shape>>, context: ToolContext) => Promise<unknown>;
   readonly outputSchema?: z.ZodTypeAny;
   readonly formatResult?: (value: unknown) => CallToolResult;
+  readonly preserveValidatedRootRecordValues?: boolean;
   readonly destructive?: boolean;
   readonly openWorld?: boolean;
   readonly idempotent?: boolean;
@@ -82,12 +91,30 @@ function errorResult(error: unknown, correlationId: string, toolName: string): C
   return { isError: true, content: [{ type: "text", text: boundedJson(safe) }] };
 }
 
-function successResult(value: unknown): CallToolResult {
-  const safe = sanitizeForOutput(value);
+class ToolOutputError extends Error {
+  readonly code = "invalid_output";
+
+  constructor() {
+    super("The tool produced a result that did not match its published output contract.");
+    this.name = "ToolOutputError";
+  }
+}
+
+function validatedOutput(value: unknown, outputSchema: z.ZodTypeAny): unknown {
+  const parsed = outputSchema.safeParse(value);
+  if (!parsed.success) throw new ToolOutputError();
+  return parsed.data;
+}
+
+function resultFromValidatedOutput(safe: unknown): CallToolResult {
   return {
     content: [{ type: "text", text: boundedJson(safe) }],
-    structuredContent: { ...safe },
+    structuredContent: { ...(safe as Record<string, unknown>) },
   };
+}
+
+function fallbackResult(value: unknown, outputSchema: z.ZodTypeAny): CallToolResult {
+  return resultFromValidatedOutput(validatedOutput(sanitizeForOutput(value), outputSchema));
 }
 
 // When a mutation's full result exceeds the output cap, the write already landed upstream, so
@@ -96,17 +123,16 @@ function successResult(value: unknown): CallToolResult {
 function truncatedMutationResult(value: unknown): Record<string, unknown> {
   const identity: Record<string, unknown> = {};
   if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-    let retained = 0;
-    for (const [key, entry] of Object.entries(value)) {
-      if (retained >= 32) break;
+    const source = value as Record<string, unknown>;
+    for (const key of MUTATION_IDENTITY_KEYS) {
+      const entry = source[key];
       if (
         entry === null ||
         typeof entry === "boolean" ||
-        typeof entry === "number" ||
+        (typeof entry === "number" && Number.isFinite(entry)) ||
         (typeof entry === "string" && entry.length <= 512)
       ) {
         identity[key] = entry;
-        retained += 1;
       }
     }
   }
@@ -119,15 +145,39 @@ function truncatedMutationResult(value: unknown): Record<string, unknown> {
   };
 }
 
-function buildSuccessResult(value: unknown, operation: OperationClass): CallToolResult {
+function buildSuccessResult(
+  value: unknown,
+  operation: OperationClass,
+  primaryDataSchema: z.ZodTypeAny,
+  outputSchema: z.ZodTypeAny,
+  preserveValidatedRootRecordValues = false,
+): CallToolResult {
+  // A handler may return only its official primary shape. The public mutation fallback is a
+  // server-generated recovery form and can never be supplied directly by an upstream handler.
+  validatedOutput(value, primaryDataSchema);
+  const sanitized = sanitizeForOutputDetailed(value, { preserveValidatedRootRecordValues });
+  let safe: unknown;
   try {
-    return successResult(value);
+    safe = validatedOutput(sanitized.output, outputSchema);
   } catch (error) {
-    // boundedJson's output-size cap is the only throw here. Read-only tools keep the existing
-    // cap error; a mutating tool has already applied its write, so an over-cap result is a
+    // A completed mutation falls back only when the sanitizer explicitly reduced structure
+    // because of its depth/node/breadth bounds. Ordinary post-sanitization schema drift must fail.
+    if (
+      operation === "read-only" ||
+      !(error instanceof ToolOutputError) ||
+      !sanitized.structurallyReduced
+    ) {
+      throw error;
+    }
+    return fallbackResult(truncatedMutationResult(value), outputSchema);
+  }
+  try {
+    return resultFromValidatedOutput(safe);
+  } catch (error) {
+    if (operation === "read-only" || !(error instanceof OutputLimitError)) throw error;
+    // A mutating tool has already applied its write, so an over-cap result is a
     // truthful, bounded success summary rather than a misleading failure.
-    if (operation === "read-only") throw error;
-    return successResult(truncatedMutationResult(value));
+    return fallbackResult(truncatedMutationResult(value), outputSchema);
   }
 }
 
@@ -165,6 +215,14 @@ export function defineTool<Shape extends ZodRawShape>(spec: ToolSpec<Shape>): To
     );
   }
   const inputSchema = z.object(inputShape).strict();
+  const genericOutput =
+    spec.outputSchema === undefined
+      ? genericToolOutputContract(spec.name, spec.operation, spec.outputDataDescription)
+      : undefined;
+  const outputSchema = spec.outputSchema ?? genericOutput?.outputSchema;
+  if (outputSchema === undefined) {
+    throw new Error(`Tool ${spec.name} is missing its output schema.`);
+  }
   return Object.freeze({
     name: spec.name,
     title: spec.title,
@@ -172,6 +230,7 @@ export function defineTool<Shape extends ZodRawShape>(spec: ToolSpec<Shape>): To
     operation: spec.operation,
     annotations,
     endpointContract: Object.freeze([...endpointContract]),
+    outputDataDescription: spec.outputDataDescription,
     ...(confirmationPhrase === undefined ? {} : { confirmationPhrase }),
     validateInput: (input: unknown): unknown => inputSchema.parse(input),
     register(server: McpServer, context: ToolContext): void {
@@ -181,13 +240,7 @@ export function defineTool<Shape extends ZodRawShape>(spec: ToolSpec<Shape>): To
           title: spec.title,
           description: spec.description,
           inputSchema,
-          outputSchema:
-            spec.outputSchema ??
-            z.object({
-              data: z.unknown(),
-              redacted: z.boolean(),
-              untrusted: z.literal(true),
-            }),
+          outputSchema,
           annotations,
         },
         async (input) => {
@@ -195,6 +248,21 @@ export function defineTool<Shape extends ZodRawShape>(spec: ToolSpec<Shape>): To
           try {
             authorizeOperation(context.startup.mode, spec.operation, spec.confirmation?.(input));
             const value = await spec.handler(input, context);
+            let result: CallToolResult;
+            if (spec.formatResult) {
+              result = spec.formatResult(value);
+            } else {
+              if (genericOutput === undefined) {
+                throw new Error(`Tool ${spec.name} is missing its primary output contract.`);
+              }
+              result = buildSuccessResult(
+                value,
+                spec.operation,
+                genericOutput.primaryDataSchema,
+                outputSchema,
+                spec.preserveValidatedRootRecordValues,
+              );
+            }
             if (spec.operation !== "read-only") {
               console.error(
                 JSON.stringify({
@@ -206,8 +274,7 @@ export function defineTool<Shape extends ZodRawShape>(spec: ToolSpec<Shape>): To
                 }),
               );
             }
-            if (spec.formatResult) return spec.formatResult(value);
-            return buildSuccessResult(value, spec.operation);
+            return result;
           } catch (error) {
             if (spec.operation !== "read-only") {
               console.error(

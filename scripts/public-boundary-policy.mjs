@@ -53,7 +53,7 @@ export function isForbiddenPublicPath(file, allowedCertificates = new Set()) {
 
   return (
     /(^|\/)(?:agents|architect|claude|gemini|memory|soul)\.md$/i.test(candidate) ||
-    /(^|\/)(?:sdds?|release-artifacts|signed-handoff|\.agents|\.audit|\.claude|\.codex|\.opencode|\.secrets|\.semgrep-rules|\.ssh)(\/|$)/i.test(
+    /(^|\/)(?:sdds?|glama|release-artifacts|signed-handoff|\.agents|\.audit|\.claude|\.codex|\.opencode|\.secrets|\.semgrep-rules|\.ssh)(\/|$)/i.test(
       candidate,
     ) ||
     /(^|\/)\.env[^/]*$/i.test(candidate) ||
@@ -63,4 +63,9 @@ export function isForbiddenPublicPath(file, allowedCertificates = new Set()) {
     /\.(?:asc|gpg|jks|key|keystore|p12|p8|pem|pfx|ppk)$/i.test(candidate) ||
     /\.(?:mcpb|tgz)$/i.test(candidate)
   );
+}
+
+export function isForbiddenMcpbProjectPath(file) {
+  const candidate = normalizedPath(file);
+  return /(?:^|\/)(?:src|test)(?:\/|$)/i.test(candidate) || isForbiddenPublicPath(candidate);
 }
