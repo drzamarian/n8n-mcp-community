@@ -98,6 +98,7 @@ jobs:
           set -euo pipefail
           mkdir release-artifacts
           npm pack --json --ignore-scripts --pack-destination release-artifacts > /dev/null
+          npm run build:mcpb
           mapfile -t bundles < <(find dist -maxdepth 1 -type f -name '*.mcpb' -print)
           test "${#bundles[@]}" -eq 1
           cp "${bundles[0]}" release-artifacts/

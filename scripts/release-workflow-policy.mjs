@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { parseAllDocuments, stringify } from "yaml";
 
 const EXPECTED_RELEASE_SEMANTIC_SHA256 =
-  "c3e727a218b2a4d15c6a2f60d2b7b0194e4b6c78b3efa95bfe5d4813ce5cdb72";
+  "6c0b989b36b75988a2fc51267c93643f0d191fd0d819624a0f7eb70f4dfdfb2d";
 
 function fail(message) {
   throw new Error(message);
@@ -132,6 +132,23 @@ const VALIDATE_DISPATCH_RUN = Object.freeze([
   'git merge-base --is-ancestor "${GITHUB_SHA}" refs/remotes/origin/main',
 ]);
 
+const BUILD_CANDIDATE_RUN = Object.freeze([
+  "set -euo pipefail",
+  "mkdir release-artifacts",
+  "npm pack --json --ignore-scripts --pack-destination release-artifacts > /dev/null",
+  "npm run build:mcpb",
+  "mapfile -t bundles < <(find dist -maxdepth 1 -type f -name '*.mcpb' -print)",
+  'test "${#bundles[@]}" -eq 1',
+  'cp "${bundles[0]}" release-artifacts/',
+  "cp server.json release-artifacts/server.json",
+  "npm run --silent sbom > release-artifacts/sbom.cdx.json",
+  "(",
+  "cd release-artifacts",
+  "sha256sum ./*.tgz ./*.mcpb ./server.json ./sbom.cdx.json \\",
+  "> SHA256SUMS.unsigned",
+  ")",
+]);
+
 const EXPECTED_STEP_NAMES = Object.freeze({
   "validate-dispatch": Object.freeze([
     "Check out the selected tag",
@@ -206,6 +223,11 @@ export function verifyReleaseWorkflow(workflow, enforceSemanticHash = true) {
     "Fail unless the dispatch ref and annotated tag agree",
   );
   requireExactRun(dispatchGuard, VALIDATE_DISPATCH_RUN, "Release-dispatch validation step");
+  const candidateBuilder = namedStep(
+    jobSteps(buildJob, "build-candidate"),
+    "Build the npm, MCPB, Registry, SBOM, and checksum set",
+  );
+  requireExactRun(candidateBuilder, BUILD_CANDIDATE_RUN, "Release-candidate build step");
   if (buildJob.needs !== "validate-dispatch" || publishJob.needs !== "build-candidate") {
     fail(
       "Release job dependencies must preserve validation before build and build before publish.",
