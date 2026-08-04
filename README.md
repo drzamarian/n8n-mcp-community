@@ -1,5 +1,7 @@
 # n8n MCP Community
 
+[![n8n-mcp-community MCP server](https://glama.ai/mcp/servers/drzamarian/n8n-mcp-community/badges/score.svg)](https://glama.ai/mcp/servers/drzamarian/n8n-mcp-community)
+
 **A security-focused Model Context Protocol server for self-hosted n8n Community Edition.**
 
 Connect an MCP client to a **bounded 44-tool n8n Community Edition management surface**: create, edit,
