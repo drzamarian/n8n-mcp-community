@@ -66,7 +66,7 @@ export const executionTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_executions_list",
     title: "List executions",
     description:
-      "List one page of saved execution metadata, optionally filtered by status or workflow. Use it for discovery and bounded triage; use n8n_executions_get when an execution ID is known. Returns metadata and a cursor, never raw workflow payload values.",
+      "List one Public API page of saved execution metadata. Use it for discovery and bounded triage; use n8n_executions_get when an ID is known. status and workflowId filter upstream, cursor resumes one prior page, and includeData only reports whether data exists—values remain withheld. Requires execution-list permission and never auto-paginates; returns metadata and nextCursor.",
     operation: "read-only",
     outputDataDescription:
       "Object with data (up to 100 allowlisted execution metadata records) and nextCursor. Each record includes identity/status/timing/retry metadata plus value-free dataPolicy; raw execution values are never returned.",
@@ -108,7 +108,7 @@ export const executionTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_executions_get",
     title: "Get execution",
     description:
-      "Get metadata for one saved execution. Use it when the ID is known; use n8n_executions_list to discover or filter executions. Returns status, timing, workflow identity, and data presence without exposing node inputs or outputs.",
+      "Get metadata for one saved execution by stable ID. Use it for a known target; use n8n_executions_list to discover or filter executions. includeData changes only whether n8n is asked about payload presence—the tool never returns node inputs or outputs. Requires permission to read the execution; returns identity, status, timing, retry fields, and value-free dataPolicy.",
     operation: "read-only",
     outputDataDescription:
       "One allowlisted execution metadata record with identity, status, mode, workflow/timing/retry fields when present, and value-free dataPolicy. Raw execution values are never returned.",
@@ -139,7 +139,7 @@ export const executionTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_executions_delete",
     title: "Delete execution",
     description:
-      "Permanently delete one saved execution. Use it only after n8n_executions_get confirms the target and retained history is no longer needed; inspection alone should use the read tools. Unsafe mode and exact confirmation are required; returns deleted=true.",
+      "Permanently delete one saved execution and its retained history. Use it only after n8n_executions_get confirms the target; use read tools for inspection. confirmation must bind DELETE to the same executionId, and the server provides no recovery or rollback. Requires unsafe mode plus execution-delete permission and exact confirmation; returns the request-bound ID with deleted=true.",
     operation: "unsafe",
     outputDataDescription:
       "Object with the validated input executionId and deleted=true. Identity is bound to the request and does not rely on an upstream response body.",
@@ -159,7 +159,7 @@ export const executionTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_executions_retry",
     title: "Retry execution",
     description:
-      "Retry one eligible saved execution, which may repeat external side effects. Use it only after n8n_executions_get review; use n8n_executions_stop for a currently running execution. Unsafe mode and exact confirmation are required; returns value-free retry metadata.",
+      "Retry one eligible saved execution, potentially repeating every external effect already reached. Use it only after n8n_executions_get review; use n8n_executions_stop for a running execution. loadWorkflow=true uses the currently saved workflow, while false uses the original execution snapshot. Requires unsafe mode, retry permission, and RETRY bound to executionId; returns metadata without payload values.",
     operation: "unsafe",
     outputDataDescription:
       "Allowlisted metadata for the new or retried execution, including scalar identity/status/timing/retry fields when supplied by n8n; raw execution values are omitted.",
@@ -191,7 +191,7 @@ export const executionTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_executions_stop",
     title: "Stop execution",
     description:
-      "Request cancellation of one running execution without rolling back completed external effects. Use n8n_executions_get for inspection or n8n_executions_retry for an eligible saved failure. Unsafe mode and exact confirmation are required; returns stopped, already_finished, or unknown.",
+      "Request cancellation of one running execution without rolling back completed external effects. Use n8n_executions_get for inspection or n8n_executions_retry for an eligible saved failure. confirmation must bind STOP to executionId; a successful HTTP response alone does not prove cancellation. Requires unsafe mode plus stop permission and exact confirmation; returns stopped, already_finished, or unknown from validated state.",
     operation: "unsafe",
     outputDataDescription:
       "Object with executionId, stopped, state (stopped, already_finished, or unknown), and optional finished/status/stoppedAt metadata. HTTP success alone never asserts that a stop occurred.",

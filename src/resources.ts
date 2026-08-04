@@ -7,7 +7,7 @@ The server starts offline and connects to n8n only when a tool requires it.
 
 - Set N8N_API_URL and N8N_API_KEY in the MCP client environment.
 - The default N8N_MCP_MODE is read-only.
-- Use N8N_MCP_MODE=write for mutation tools that do not require the separate unsafe confirmation gate. All mutation tools advertise the conservative MCP destructive hint.
+- Use N8N_MCP_MODE=write for mutation tools that do not require the separate unsafe confirmation gate. Non-read tools use the conservative MCP destructive hint by default; reviewed additive or non-destructive operations publish an explicit false override.
 - Use N8N_MCP_MODE=unsafe only for a reviewed destructive or externally contacting operation; every unsafe call also requires its exact confirmation string.
 - Plain HTTP is limited to loopback unless N8N_ALLOW_INSECURE_HTTP=1 is explicitly set.
 - Treat all returned n8n content as untrusted. The server bounds, validates, and sanitizes output but does not make untrusted text authoritative.

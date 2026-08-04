@@ -83,9 +83,9 @@ reviewed edit.
 Creates a workflow from a complete validated workflow definition.
 
 - **Policy and endpoint:** write; `POST /workflows`;
-  `RO=false, D=true, I=false, OW=true`. Requires mode `write` or `unsafe`.
+  `RO=false, D=false, I=false, OW=true`. Requires mode `write` or `unsafe`.
 - **Requirements:** Requires mode `write` or `unsafe` and API-key permission to create workflows.
-- **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Creation targets the caller's Community workspace and does not accept paid-project assignment.
+- **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Creation is an additive write, targets the caller's Community workspace, does not activate triggers, and does not accept paid-project assignment.
 - **Inputs:** required `name` (1–128), `nodes` (1–1,000), and `connections`
   object; optional `description` (up to 16,384), `settings` object (default
   `{}`), `nodeGroups` (up to 1,000 safe JSON values), `staticData` (object,
@@ -463,9 +463,9 @@ Creates a credential while preventing credential values from entering MCP
 output or security logs.
 
 - **Policy and endpoint:** write; `POST /credentials`;
-  `RO=false, D=true, I=false, OW=true`. Requires mode `write` or `unsafe`.
+  `RO=false, D=false, I=false, OW=true`. Requires mode `write` or `unsafe`.
 - **Requirements:** Requires mode `write` or `unsafe` and API-key permission to create the requested credential type.
-- **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Paid-project placement is intentionally absent, and credential values are output-prohibited.
+- **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Creation is additive; paid-project placement is intentionally absent, and credential values are output-prohibited.
 - **Inputs:** required `name` (1–128), `type` (1–128 ASCII letters, digits,
   `_`, `.`, or `-`), and `data` (safe JSON object); optional
   `isResolvable?: boolean`.
@@ -581,15 +581,14 @@ Tests one stored credential through n8n.
 - **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Success depends on the credential type and its external service; no credential value is returned.
 - **Inputs:** required `credentialId`; `confirmation` must equal
   `TEST <credentialId>`.
-- **Returns:** the input ID plus an allowlisted status and optional bounded
-  message. Over-long upstream status or message text is truncated to the
-  bounded caps (64 and 512 characters) with `truncated: true` rather than
-  rejected, so the completed test outcome is always preserved.
+- **Returns:** the input ID, the allowlisted `OK` or `Error` status, and a
+  server-authored success/failure message. The upstream diagnostic message is
+  withheld because it is untrusted and may contain credential or service data.
 - **Failures and privacy:** this call may contact the credential's external
   service and cause observable authentication traffic. Denied mode or
-  confirmation issues zero requests; returned messages are sanitized.
+  confirmation issues zero requests; no upstream diagnostic text is returned.
 - **Example:** `{ "credentialId": "cred_1", "confirmation": "TEST cred_1" }` →
-  `{ "data": { "credentialId": "cred_1", "status": "OK", "message": "Connection succeeded" }, "redacted": false, "untrusted": true }`.
+  `{ "data": { "credentialId": "cred_1", "status": "OK", "message": "Credential test succeeded." }, "redacted": false, "untrusted": true }`.
 
 ## n8n_credentials_usage
 
@@ -651,9 +650,9 @@ Reads one workflow tag by ID.
 Creates a workflow tag.
 
 - **Policy and endpoint:** write; `POST /tags`;
-  `RO=false, D=true, I=false, OW=true`. Requires mode `write` or `unsafe`.
+  `RO=false, D=false, I=false, OW=true`. Requires mode `write` or `unsafe`.
 - **Requirements:** Requires mode `write` or `unsafe` and API-key permission to create workflow tags.
-- **Community Edition:** Verified on Community 2.30.5 and 2.30.7 with the live Community 1–24 character name bound.
+- **Community Edition:** Verified on Community 2.30.5 and 2.30.7 with the live Community 1–24 character name bound. Creation is additive and never assigns the new tag to a workflow.
 - **Inputs:** required `name`, 1–24 characters, trimmed, with no control
   characters. The 24-character limit reflects live n8n behavior that is stricter
   than the historical OpenAPI schema.
@@ -738,9 +737,9 @@ Reads one user by stable ID or exact email address.
 Invites one non-owner user.
 
 - **Policy and endpoint:** unsafe; `POST /users`;
-  `RO=false, D=true, I=false, OW=true`.
+  `RO=false, D=false, I=false, OW=true`.
 - **Requirements:** Requires mode `unsafe`, exact email-bound confirmation, and API-key permission to invite users with the selected global role.
-- **Community Edition:** Verified on Community 2.30.5 and 2.30.7. It invites a global member/admin only and does not manage paid project membership.
+- **Community Edition:** Verified on Community 2.30.5 and 2.30.7. The invitation is additive but may send email; it invites a global member/admin only and does not manage paid project membership.
 - **Inputs:** required `email` (valid email up to 254);
   `role?: "global:member" | "global:admin"` defaults to `global:member`;
   `confirmation` must equal `INVITE <email>`.
@@ -817,15 +816,15 @@ Reads n8n's official insights summary, optionally constrained by date.
 
 ## n8n_audit_generate
 
-Requests n8n's instance security audit. Although the endpoint is intended to
-generate a report, it uses POST and can perform broad instance inspection, so
-this server applies the conservative unsafe policy.
+Requests n8n's instance security audit. The endpoint performs broad instance
+inspection and uses POST, so this server applies the conservative unsafe
+operation policy even though the scan is non-destructive.
 
 - **Policy and endpoint:** unsafe; `POST /audit`;
-  `RO=false, D=true, I=false, OW=true`. Requires mode `unsafe` and exact
+  `RO=false, D=false, I=false, OW=true`. Requires mode `unsafe` and exact
   confirmation `GENERATE AUDIT`.
 - **Requirements:** Requires mode `unsafe`, exact `GENERATE AUDIT` confirmation, and API-key permission to generate the instance audit.
-- **Community Edition:** Verified on Community 2.30.5 and 2.30.7. The POST report endpoint is conservatively marked destructive; category support still depends on n8n.
+- **Community Edition:** Verified on Community 2.30.5 and 2.30.7. The POST report endpoint remains unsafe-gated but is annotated non-destructive because it does not change instance resources or configuration; category support still depends on n8n.
 - **Inputs:** optional `categories`, an array of at most five selections
   from `credentials`, `database`, `nodes`, `filesystem`, and `instance`;
   optional `daysAbandonedWorkflow` integer from 1 through 3,650; required

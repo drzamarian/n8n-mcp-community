@@ -56,7 +56,7 @@ export const userTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_users_list",
     title: "List users",
     description:
-      "List one page of users visible through the n8n Public API. Use it for discovery; use n8n_users_get when a stable ID or exact email is already known. Returns validated user metadata and an optional next-page cursor.",
+      "List one Public API page of users. Use it for discovery; use n8n_users_get when a stable ID or exact email is known. includeRole=true only asks n8n for roles, which may still be omitted by permission; cursor resumes one prior page and this call never auto-paginates. Requires user-list permission; returns redaction-protected metadata and nextCursor.",
     operation: "read-only",
     outputDataDescription:
       "Object with data (up to 100 validated user records) and nextCursor. Records include id and optional email/name/role/status/timestamps; recognized personal values may be redacted.",
@@ -86,7 +86,7 @@ export const userTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_users_get",
     title: "Get user",
     description:
-      "Get one user by stable ID or exact email address. Use it for targeted verification before an administrative action; use n8n_users_list for discovery. Returns validated identity, role, and account state without changing the user.",
+      "Get one user by stable ID or exact email. Use it for targeted verification before an administrative action; use n8n_users_list for discovery. userIdOrEmail chooses ID lookup or an exact percent-encoded email lookup; includeRole=true requests but cannot guarantee role visibility. Requires user-read permission; returns redaction-protected identity and account state without mutation.",
     operation: "read-only",
     outputDataDescription:
       "One validated user record with id and optional email, firstName, lastName, role, disabled/pending status, and timestamps. Recognized personal values may be redacted.",
@@ -109,10 +109,11 @@ export const userTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_users_create",
     title: "Invite user",
     description:
-      "Invite one non-owner user by email with a supported global role. Use n8n_users_get first when the address may already exist; this tool is not an update operation. Unsafe mode and exact email confirmation are required; returns delivery state without an acceptance URL.",
+      "Create a pending non-owner invitation as an additive write that may send email. Use n8n_users_get first when the address may exist; this is not an update or project-membership tool. role defaults to global:member, and confirmation must bind INVITE to the exact email. Requires unsafe mode plus invite permission. An inconclusive response may still mean a pending user exists; returns delivery state but never the acceptance URL.",
     operation: "unsafe",
     outputDataDescription:
       "Confirmed invitation outcome with userCreated, invited, userId, email, requestedRole, roleConfirmedByResponse, emailSent, delivery, and inviteAcceptUrlReturned=false. Acceptance URLs are never returned.",
+    destructive: false,
     input: {
       email,
       role: z
@@ -163,7 +164,7 @@ export const userTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_users_delete",
     title: "Delete user",
     description:
-      "Delete one API-eligible user; ownership handling follows n8n's Public API. Use it only after n8n_users_get verifies the target and consequences; read tools should be used for inspection. Unsafe mode and exact confirmation are required; returns deleted=true.",
+      "Permanently delete one API-eligible user. Use n8n_users_get to verify the target first; use read tools for inspection. userId accepts no transfer target, so ownership handling remains entirely with n8n, and confirmation must bind DELETE to that ID. Requires unsafe mode plus user-delete permission and exact confirmation; returns the request-bound ID with deleted=true and provides no rollback claim.",
     operation: "unsafe",
     outputDataDescription:
       "Object with the validated input userId and deleted=true. The tool makes no ownership-transfer claim and accepts n8n's successful empty response.",
