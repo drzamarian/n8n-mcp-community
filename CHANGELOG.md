@@ -6,6 +6,32 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.4] - Frozen release candidate
+
+Version 0.1.4 is a frozen release candidate. Availability is established only
+by matching npm provenance, GitHub Release assets and signatures, and MCP
+Registry readbacks; this immutable entry is not rewritten after publication.
+
+### Security
+
+- `n8n_credentials_test` now consumes only the upstream success/error status
+  and returns fixed public messages. Provider-supplied diagnostic text is never
+  exposed because it can contain credential material or other sensitive data.
+
+### Changed
+
+- All 44 tool definitions now describe their specific side effects,
+  authorization boundary, compatibility constraints, and return semantics in
+  native-quality English.
+- MCP destructive hints now distinguish five reviewed additive or
+  non-destructive operations from destructive mutations without weakening the
+  independent read-only, write, and unsafe authorization classes.
+- A complete 44-tool definition matrix binds the final `tools/list` surface to
+  the documented operation classes, annotations, authorization requirements,
+  return contracts, and tool-specific semantics. Controlled synthetic
+  mutations prove that every matrix invariant can fail.
+- The README now includes the Glama score badge used by MCP directory listings.
+
 ## [0.1.3] - Frozen release candidate
 
 Version 0.1.3 is a frozen release candidate. Availability is established only
@@ -215,6 +241,7 @@ Registry readbacks; this immutable entry is not rewritten after publication.
   publishable history; authenticated public release receipts remain supported.
 
 [Unreleased]: #unreleased
+[0.1.4]: #014---frozen-release-candidate
 [0.1.3]: #013---frozen-release-candidate
 [0.1.2]: #012---frozen-release-candidate
 [0.1.1]: https://github.com/drzamarian/n8n-mcp-community/releases/tag/v0.1.1

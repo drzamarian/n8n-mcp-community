@@ -306,7 +306,7 @@ API. The project does not redistribute the `n8n-nodes-base` catalog and does not
 use browser cookies, interactive session routes, or runtime package downloads to
 construct one.
 
-The v0.1.3 candidate surface intentionally excludes arbitrary workflow execution,
+The v0.1.4 candidate surface intentionally excludes arbitrary workflow execution,
 credential/workflow transfer, folders, data tables, beta evaluation endpoints,
 and execution annotations. See the [roadmap](ROADMAP.md) for the annotation
 proposal retained outside the release target.
