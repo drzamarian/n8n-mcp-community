@@ -21,7 +21,7 @@ export const tagTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_tags_list",
     title: "List tags",
     description:
-      "List one page of workflow tags. Use it to discover stable tag IDs; use n8n_tags_get instead when the ID is already known. Returns validated tag metadata and an optional cursor for the next page.",
+      "List one Public API page of workflow tags. Use it to discover stable tag IDs; use n8n_tags_get when the ID is already known. cursor resumes the prior page and limit bounds only this request, so continue nextCursor until null when complete coverage matters. Requires tag-list permission and never changes assignments; returns validated metadata and nextCursor.",
     operation: "read-only",
     outputDataDescription:
       "Object with data (up to 100 validated tag records) and nextCursor (string or null). Each tag includes id, name, and optional createdAt/updatedAt timestamps.",
@@ -40,7 +40,7 @@ export const tagTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_tags_get",
     title: "Get tag",
     description:
-      "Get one workflow tag by its stable ID. Use it to verify a known tag before assigning, renaming, or deleting it; use n8n_tags_list for discovery. Returns validated tag metadata without changing workflows.",
+      "Get one workflow tag by stable ID. Use it to verify a known target before assigning, renaming, or deleting it; use n8n_tags_list for discovery. tagId identifies the reusable tag itself, not a workflow assignment, so this call neither lists nor changes assigned workflows. Requires tag-read permission; returns validated ID, name, and optional timestamps.",
     operation: "read-only",
     outputDataDescription:
       "One validated tag record with id, name, and optional createdAt/updatedAt timestamps.",
@@ -54,10 +54,11 @@ export const tagTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_tags_create",
     title: "Create tag",
     description:
-      "Create one workflow tag. Use it for a new reusable label; use n8n_tags_update when the tag already exists, and n8n_workflows_update_tags to assign it. Returns validated metadata and never assigns the new tag automatically.",
+      "Create and persist one workflow tag as an additive write. Use it for a new reusable label; use n8n_tags_update when the tag exists and n8n_workflows_update_tags to assign it. name must already be trimmed, and duplicate-name handling belongs to n8n; creation never changes any workflow assignment. Requires write/unsafe mode plus tag-create permission; returns validated metadata.",
     operation: "write",
     outputDataDescription:
       "Created tag record with validated id, name, and optional createdAt/updatedAt timestamps.",
+    destructive: false,
     input: { name: tagName },
     handler: async (input, context) =>
       tagSchema.parse(
@@ -70,7 +71,7 @@ export const tagTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_tags_update",
     title: "Update tag",
     description:
-      "Rename one workflow tag without changing its stable ID or assignments. Use it for an existing tag; use n8n_tags_create for a new label and n8n_workflows_update_tags for assignments. Returns validated updated metadata.",
+      "Rename one existing workflow tag while preserving its stable ID and current assignments. Use n8n_tags_create for a new label and n8n_workflows_update_tags to change assignments. tagId selects the existing record and name is its complete replacement; duplicate-name acceptance belongs to n8n. Requires write/unsafe mode plus tag-update permission; returns validated metadata.",
     operation: "write",
     outputDataDescription:
       "Updated tag record with validated id, name, and optional createdAt/updatedAt timestamps.",
@@ -88,7 +89,7 @@ export const tagTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_tags_delete",
     title: "Delete tag",
     description:
-      "Permanently delete one workflow tag. Use it only after n8n_tags_get and affected-workflow review; use n8n_tags_update when a rename is sufficient. Unsafe mode and exact confirmation are required; returns the ID with deleted=true.",
+      "Permanently delete one workflow tag, which can remove that label from multiple workflows. Use n8n_tags_get plus affected-workflow review first; use n8n_tags_update when a rename is sufficient. confirmation must bind DELETE to tagId, and no rollback is provided. Requires unsafe mode plus tag-delete permission and exact confirmation; returns the request-bound ID with deleted=true.",
     operation: "unsafe",
     outputDataDescription:
       "Object with the validated input tagId and deleted=true. Identity is bound to the request and does not rely on an upstream response body.",

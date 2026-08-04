@@ -814,7 +814,7 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_workflows_list",
     title: "List workflows",
     description:
-      "List one page of workflows visible to the configured API key. Use it for unsearched discovery; use n8n_search_workflows for local substring matching or n8n_workflows_get when the ID is known. Returns projected workflows and a cursor, never pin/static values.",
+      "List one Public API page of workflows visible to the configured API key. Use it for unsearched discovery; use n8n_search_workflows for local substring matching or n8n_workflows_get when the ID is known. Filters are applied upstream, cursor resumes a prior page, and this call never auto-paginates. Requires workflow-list permission; returns projected workflows and nextCursor, never pin/static values.",
     operation: "read-only",
     outputDataDescription:
       "Object with data (up to 100 projected workflows) and nextCursor (string or null). Each workflow includes structure/state plus pinDataPresent and staticDataPresent presence markers, but never pinned or static values.",
@@ -867,7 +867,7 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_workflows_get",
     title: "Get workflow",
     description:
-      "Get one current workflow by stable ID for inspection or reviewed editing. Use n8n_workflows_get_version for retained history or n8n_workflows_list for discovery. Returns structure, state, settings, and presence flags; pin/static values are always withheld.",
+      "Get one current workflow by stable ID for inspection or reviewed editing. Use n8n_workflows_get_version for retained history or n8n_workflows_list for discovery. excludePinnedData controls only the upstream request and presence reporting; values are always withheld. Requires permission to read the target; returns structure, state, settings, and presence flags.",
     operation: "read-only",
     outputDataDescription:
       "Current workflow projection with id, optional versionId/description/state, name, nodes, connections, settings, and pinDataPresent/staticDataPresent markers. Pinned and static values are never returned.",
@@ -895,10 +895,11 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_workflows_create",
     title: "Create workflow",
     description:
-      "Create one workflow from a complete validated definition. Use it for a new workflow; use n8n_workflows_update for an existing workflow and n8n_workflows_activate separately for triggers. Validates the graph and returns a projection without pin/static values.",
+      "Create and persist one workflow as an additive write without activating its triggers. Use it for a new workflow; use n8n_workflows_update for an existing one and n8n_workflows_activate separately for triggers. nodes and connections must describe one complete consistent graph; optional pin/static inputs are accepted but never returned. Requires write or unsafe mode plus create permission; returns the validated projection.",
     operation: "write",
     outputDataDescription:
       "Created workflow projection with id, optional versionId/description/state, name, nodes, connections, settings, and withheld pin/static presence markers. Pinned and static values are never returned.",
+    destructive: false,
     input: {
       name: z.string().min(1).max(128).describe("Workflow name (1-128 characters)."),
       description: z
@@ -950,7 +951,7 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_workflows_update",
     title: "Update workflow",
     description:
-      "Update selected top-level workflow fields while preserving omitted writable fields. Use n8n_update_node for one node property and n8n_workflows_update_tags for tag assignments. Requires the current versionId, performs a non-atomic full PUT, and returns the confirmed projection.",
+      "Update selected top-level workflow fields through a non-atomic full PUT. Use n8n_update_node for one node property and n8n_workflows_update_tags for tag assignments. expectedVersionId must match both pre-write reads; omitted writable fields are preserved, while supplied nodes or other composite fields replace that field completely. Requires write/unsafe mode plus read and update permission; returns the confirmed projection.",
     operation: "write",
     outputDataDescription:
       "Confirmed updated workflow projection with id, version/state, name, optional description, nodes, connections, settings, and withheld pin/static presence markers. Omitted writable fields come from the immediate pre-write read.",
@@ -1039,7 +1040,7 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_update_node",
     title: "Update one workflow node",
     description:
-      "Update one validated mutable property on one workflow node while preserving the rest. Use it instead of n8n_workflows_update for a single-node change; use the full update for top-level or multi-node edits. Requires version/risk guards and returns the path plus non-atomic risk.",
+      "Update one validated path on one workflow node while preserving sibling data. Use it instead of n8n_workflows_update for a single-node change; use the full update for top-level or multi-node edits. path selects the mutable root whose contract validates value, and both version/risk guards must match before the non-atomic PUT. Requires write/unsafe mode plus read and update permission; returns the changed path and residual race risk.",
     operation: "write",
     outputDataDescription:
       "Object with workflowId, versionId, nodeId, path, updated=true, atomic=false, and residualRisk describing the Public API's non-atomic full-workflow PUT limitation.",
@@ -1137,7 +1138,7 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_workflows_delete",
     title: "Delete workflow",
     description:
-      "Permanently delete one workflow and its saved definition. Use n8n_workflows_archive when reversible removal is sufficient and n8n_workflows_get for inspection. Unsafe mode and exact target confirmation are required; returns the ID with deleted=true.",
+      "Permanently delete one workflow and its saved definition. Use n8n_workflows_archive when reversible removal is sufficient and n8n_workflows_get for inspection. confirmation must bind DELETE to the same workflowId; no rollback or transfer is provided. Requires unsafe mode plus delete permission and exact confirmation; returns the request-bound ID with deleted=true.",
     operation: "unsafe",
     outputDataDescription:
       "Object with the validated input workflowId and deleted=true. Identity is bound to the request and does not rely on an upstream response body.",
@@ -1159,8 +1160,8 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
       title: `${action === "activate" ? "Activate" : "Deactivate"} workflow`,
       description:
         action === "activate"
-          ? "Activate one workflow so production triggers can accept future events. Use it only after n8n_workflows_get review; use n8n_workflows_deactivate to stop future triggers. Unsafe mode and exact confirmation are required; returns allowlisted state metadata."
-          : "Deactivate one workflow's production triggers without deleting saved data or stopping current work. Use n8n_workflows_activate to reverse this state or n8n_workflows_archive for lifecycle removal. Unsafe mode and exact confirmation are required; returns state metadata.",
+          ? "Activate one workflow so production triggers can accept future events; this does not execute it immediately. Use it only after n8n_workflows_get review; use n8n_workflows_deactivate to stop future triggers. confirmation must bind ACTIVATE to workflowId. Requires unsafe mode plus activation permission and exact confirmation; returns target-validated active state metadata."
+          : "Deactivate one workflow's future production triggers without deleting saved data or stopping executions already running. Use n8n_workflows_activate to reverse this state or n8n_workflows_archive for lifecycle removal. confirmation must bind DEACTIVATE to workflowId. Requires unsafe mode plus deactivation permission and exact confirmation; returns target-validated inactive state metadata.",
       operation: "unsafe",
       outputDataDescription:
         action === "activate"
@@ -1191,7 +1192,7 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_workflows_get_version",
     title: "Get workflow version",
     description:
-      "Get one retained historical workflow snapshot. Use it when exact historical nodes/connections are needed; use n8n_workflows_get for current state or n8n_workflows_diff for value-free comparison. Returns validated identity and structure, subject to Community retention.",
+      "Get one retained historical workflow snapshot selected by workflowId and versionId. Use it when exact historical nodes/connections are needed; use n8n_workflows_get for current state or n8n_workflows_diff for value-free comparison. Both returned IDs must match the selectors; a missing endpoint and a pruned version share an explicit ambiguous 404 outcome. Requires history-read permission; returns validated structure subject to retention.",
     operation: "read-only",
     outputDataDescription:
       "Historical snapshot with workflowId, versionId, optional name, nodes, and connections. Historical settings, pin data, and static data are unavailable from the supported Public API.",
@@ -1214,7 +1215,7 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_workflows_get_tags",
     title: "Get workflow tags",
     description:
-      "List the tags currently assigned to one workflow. Use it before n8n_workflows_update_tags when assignments must be preserved; use n8n_tags_list to discover all available tags. Returns a bounded validated collection with exact truncation counts.",
+      "List the tags currently assigned to one workflow. Use it before n8n_workflows_update_tags when assignments must be preserved; use n8n_tags_list to discover all available tags. This endpoint has no cursor: the tool retains at most 100 records and reports totalCount plus exact omissions. Requires permission to read the workflow's assignments; returns validated tag metadata.",
     operation: "read-only",
     outputDataDescription:
       "Object with data (at most 100 validated tag records), totalCount, truncated, and exact omittedCount. Each tag may include id, name, createdAt, and updatedAt.",
@@ -1232,7 +1233,7 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_workflows_update_tags",
     title: "Update workflow tags",
     description:
-      "Replace the complete tag assignment for one workflow; this is not a merge. Use n8n_workflows_get_tags first to preserve existing assignments and n8n_tags_create for a missing tag; an empty array clears all tags. Returns n8n's validated assignment.",
+      "Replace the complete tag assignment for one workflow; this is not a merge. Use n8n_workflows_get_tags first to preserve IDs and n8n_tags_create for a missing tag. tagIds is the entire desired set, so omitted IDs are removed and an empty array clears all tags. Requires write/unsafe mode plus assignment permission; returns n8n's validated replacement.",
     operation: "write",
     outputDataDescription:
       "Array of at most 100 validated tag records returned by n8n after replacing the workflow's complete assignment. An empty returned array represents no assigned tags.",
@@ -1266,8 +1267,8 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
       title: `${action === "archive" ? "Archive" : "Unarchive"} workflow`,
       description:
         action === "archive"
-          ? "Archive one workflow without deleting it. Use it instead of n8n_workflows_delete when reversible lifecycle removal is required; use n8n_workflows_deactivate only to stop triggers. Unsafe mode and exact confirmation are required; returns archive state."
-          : "Restore one archived workflow without activating it. Use it to reverse n8n_workflows_archive; call n8n_workflows_activate separately only if triggers should resume. Unsafe mode and exact confirmation are required; returns archive state.",
+          ? "Archive one workflow without deleting its saved definition. Use it instead of n8n_workflows_delete for reversible lifecycle removal; use n8n_workflows_deactivate only to stop triggers. confirmation must bind ARCHIVE to workflowId, and the availability change can disrupt callers. Requires unsafe mode plus archive permission and exact confirmation; returns target-validated archive state."
+          : "Restore one archived workflow without activating its triggers. Use it to reverse n8n_workflows_archive; call n8n_workflows_activate separately only if triggers should resume. confirmation must bind UNARCHIVE to workflowId; current active state is not inferred. Requires unsafe mode plus unarchive permission and exact confirmation; returns target-validated archive state.",
       operation: "unsafe",
       outputDataDescription:
         action === "archive"
@@ -1298,7 +1299,7 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_workflows_diff",
     title: "Compare workflow versions",
     description:
-      "Compare one retained workflow version with another or current state. Use it for value-free review; use n8n_workflows_get_version when raw historical structure is needed. Returns counts, coverage, and up to 200 changes; unavailable historical fields are explicit.",
+      "Compare one retained workflow version with another or current state without returning changed values. Use it for review; use n8n_workflows_get_version when raw historical structure is needed. Omitting toVersionId selects current, while ignoreLayout=true suppresses position-only changes; selectors must differ. Requires workflow/history read permission; returns coverage, counts, and a byte-bounded prefix of up to 200 changes.",
     operation: "read-only",
     outputDataDescription:
       "Value-free comparison with workflowId, from/to selectors, comparisonCoverage, summary counts, byte-budgeted changes (up to 200), truncated, and exact omittedDetails. Modified nodes name changed fields; parameterChanges expose only sanitized paths, presence, value types, changed=true, and exact truncation metadata, while credential changes expose only referenceChanged=true. Raw values and webhook identifiers are never returned.",

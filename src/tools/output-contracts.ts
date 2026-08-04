@@ -359,9 +359,8 @@ const outputDataSchemas: Readonly<Record<string, z.ZodTypeAny>> = Object.freeze(
   n8n_credentials_test: z
     .object({
       credentialId: text(),
-      status: text(),
-      message: text().optional(),
-      truncated: z.literal(true).optional(),
+      status: z.enum(["OK", "Error"]),
+      message: z.enum(["Credential test succeeded.", "Credential test failed."]),
     })
     .strict(),
   n8n_credentials_usage: z

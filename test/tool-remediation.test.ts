@@ -251,16 +251,19 @@ test("FABLE-R2-P3-06: execution stop derives a truthful state from the upstream 
   }
 });
 
-test("FABLE-R2-P3-07: credential test truncates an over-cap message instead of discarding the outcome", async () => {
-  const longMessage = "Upstream authentication diagnostic detail. ".repeat(40);
-  assert(longMessage.length > 512);
+test("credential test withholds potentially secret-bearing upstream diagnostics", async () => {
+  const upstreamMessage = "The password hunter2 was rejected";
+  let testRequests = 0;
 
   await withConnectedClient(
     async (input, init) => {
       const request = input instanceof Request ? input : new Request(input, init);
       const url = new URL(request.url);
       if (url.pathname === "/api/v1/credentials/cred_1/test" && request.method === "POST") {
-        return json({ status: "Error", message: longMessage });
+        testRequests += 1;
+        return testRequests === 1
+          ? json({ status: "Error", message: upstreamMessage })
+          : json({ status: "OK" });
       }
       return json({ message: "No fixture" }, 404);
     },
@@ -272,9 +275,17 @@ test("FABLE-R2-P3-07: credential test truncates an over-cap message instead of d
       assert.equal(result.isError, undefined, JSON.stringify(result).slice(0, 500));
       const data = structuredData(result);
       assert.equal(data.status, "Error");
-      assert.equal(data.truncated, true);
-      assert(typeof data.message === "string");
-      assert(data.message.length <= 512);
+      assert.equal(data.message, "Credential test failed.");
+      assert.equal(JSON.stringify(result).includes("hunter2"), false);
+
+      const messageLessResult = await client.callTool({
+        name: "n8n_credentials_test",
+        arguments: { credentialId: "cred_1", confirmation: "TEST cred_1" },
+      });
+      assert.equal(messageLessResult.isError, undefined, JSON.stringify(messageLessResult));
+      const messageLessData = structuredData(messageLessResult);
+      assert.equal(messageLessData.status, "OK");
+      assert.equal(messageLessData.message, "Credential test succeeded.");
     },
   );
 });

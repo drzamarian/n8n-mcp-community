@@ -1,5 +1,7 @@
 # n8n MCP Community
 
+[![n8n-mcp-community MCP server](https://glama.ai/mcp/servers/drzamarian/n8n-mcp-community/badges/score.svg)](https://glama.ai/mcp/servers/drzamarian/n8n-mcp-community)
+
 **A security-focused Model Context Protocol server for self-hosted n8n Community Edition.**
 
 Connect an MCP client to a **bounded 44-tool n8n Community Edition management surface**: create, edit,
@@ -47,7 +49,7 @@ diagnostics using only synthetic identifiers and documented output shapes.
 The current source candidate has been verified with:
 
 - exactly **44 tools**, **5 resources**, and **4 prompts** over real stdio;
-- **292 passing tests** and the complete verification gate on Node.js 22.23.1
+- **295 passing tests** and the complete verification gate on Node.js 22.23.1
   and 24.18.0;
 - zero findings from Gitleaks, Semgrep, Trivy, and both project-root
   production/full `npm audit` runs; all three source scanners are reproduced in

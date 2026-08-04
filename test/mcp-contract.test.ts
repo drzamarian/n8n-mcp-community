@@ -63,8 +63,166 @@ const EXPECTED_TOOLS = [
   "n8n_community_packages_list",
 ] as const;
 
+type ToolName = (typeof EXPECTED_TOOLS)[number];
+type ToolOperation = "read-only" | "write" | "unsafe";
+
+const EXPECTED_TOOL_OPERATIONS: Readonly<Record<ToolName, ToolOperation>> = {
+  n8n_workflows_list: "read-only",
+  n8n_workflows_get: "read-only",
+  n8n_workflows_create: "write",
+  n8n_workflows_update: "write",
+  n8n_update_node: "write",
+  n8n_workflows_delete: "unsafe",
+  n8n_workflows_activate: "unsafe",
+  n8n_workflows_deactivate: "unsafe",
+  n8n_workflows_get_version: "read-only",
+  n8n_workflows_get_tags: "read-only",
+  n8n_workflows_update_tags: "write",
+  n8n_workflows_archive: "unsafe",
+  n8n_workflows_unarchive: "unsafe",
+  n8n_workflows_diff: "read-only",
+  n8n_executions_list: "read-only",
+  n8n_executions_get: "read-only",
+  n8n_executions_delete: "unsafe",
+  n8n_executions_retry: "unsafe",
+  n8n_executions_stop: "unsafe",
+  n8n_credentials_create: "write",
+  n8n_credentials_delete: "unsafe",
+  n8n_credentials_schema: "read-only",
+  n8n_credentials_list: "read-only",
+  n8n_credentials_get: "read-only",
+  n8n_credentials_update: "write",
+  n8n_credentials_test: "unsafe",
+  n8n_credentials_usage: "read-only",
+  n8n_tags_list: "read-only",
+  n8n_tags_get: "read-only",
+  n8n_tags_create: "write",
+  n8n_tags_update: "write",
+  n8n_tags_delete: "unsafe",
+  n8n_users_list: "read-only",
+  n8n_users_get: "read-only",
+  n8n_users_create: "unsafe",
+  n8n_users_delete: "unsafe",
+  n8n_health: "read-only",
+  n8n_insights_summary: "read-only",
+  n8n_audit_generate: "unsafe",
+  n8n_search_workflows: "read-only",
+  n8n_get_node_docs: "read-only",
+  n8n_list_node_types: "read-only",
+  n8n_introspect: "read-only",
+  n8n_community_packages_list: "read-only",
+};
+
+const NON_DESTRUCTIVE_MUTATIONS = new Map<ToolName, "write" | "unsafe">([
+  ["n8n_workflows_create", "write"],
+  ["n8n_credentials_create", "write"],
+  ["n8n_tags_create", "write"],
+  ["n8n_users_create", "unsafe"],
+  ["n8n_audit_generate", "unsafe"],
+]);
+
+const DESCRIPTION_PARAMETER_SEMANTICS: Readonly<Record<ToolName, RegExp>> = {
+  n8n_workflows_list: /cursor resumes .* never auto-paginates/i,
+  n8n_workflows_get: /excludePinnedData controls only .* presence reporting/i,
+  n8n_workflows_create: /nodes and connections must describe one complete consistent graph/i,
+  n8n_workflows_update:
+    /expectedVersionId must match both pre-write reads.*supplied nodes .* replace/i,
+  n8n_update_node: /path selects the mutable root whose contract validates value/i,
+  n8n_workflows_delete: /confirmation must bind DELETE to the same workflowId.*no rollback/i,
+  n8n_workflows_activate: /does not execute it immediately.*confirmation must bind ACTIVATE/i,
+  n8n_workflows_deactivate: /without .* stopping executions already running.*bind DEACTIVATE/i,
+  n8n_workflows_get_version: /Both returned IDs must match the selectors.*ambiguous 404/i,
+  n8n_workflows_get_tags: /endpoint has no cursor.*at most 100.*exact omissions/i,
+  n8n_workflows_update_tags: /tagIds is the entire desired set.*empty array clears all tags/i,
+  n8n_workflows_archive: /bind ARCHIVE to workflowId.*availability change can disrupt callers/i,
+  n8n_workflows_unarchive: /without activating its triggers.*bind UNARCHIVE to workflowId/i,
+  n8n_workflows_diff: /Omitting toVersionId selects current.*ignoreLayout=true suppresses/i,
+  n8n_executions_list: /status and workflowId filter upstream.*includeData only reports/i,
+  n8n_executions_get: /includeData changes only.*never returns node inputs or outputs/i,
+  n8n_executions_delete: /bind DELETE to the same executionId.*no recovery or rollback/i,
+  n8n_executions_retry:
+    /loadWorkflow=true uses the currently saved workflow.*false uses the original execution snapshot/i,
+  n8n_executions_stop: /successful HTTP response alone does not prove cancellation/i,
+  n8n_credentials_create: /type selects the schema .* isResolvable is sent only when supplied/i,
+  n8n_credentials_delete: /usage across all pages first.*bind DELETE to credentialId/i,
+  n8n_credentials_schema: /credentialType is a route selector, not a stored credential ID/i,
+  n8n_credentials_list:
+    /cursor resumes a prior page.*limit bounds that single request.*never auto-paginates/i,
+  n8n_credentials_get: /credentialId identifies stored metadata only/i,
+  n8n_credentials_update:
+    /isPartialData=false treats data as replacement.*true requests a partial merge/i,
+  n8n_credentials_test:
+    /external service, which receives and may log the attempt.*bind TEST to credentialId/i,
+  n8n_credentials_usage:
+    /active filters upstream.*unresolved legacy references.*nextCursor is null/i,
+  n8n_tags_list: /cursor resumes the prior page.*continue nextCursor until null/i,
+  n8n_tags_get: /tagId identifies the reusable tag itself, not a workflow assignment/i,
+  n8n_tags_create:
+    /name must already be trimmed.*duplicate-name handling.*never changes any workflow assignment/i,
+  n8n_tags_update: /tagId selects the existing record and name is its complete replacement/i,
+  n8n_tags_delete: /remove that label from multiple workflows.*bind DELETE to tagId.*no rollback/i,
+  n8n_users_list: /includeRole=true only asks n8n for roles.*cursor resumes.*never auto-paginates/i,
+  n8n_users_get:
+    /userIdOrEmail chooses ID lookup or an exact percent-encoded email lookup.*cannot guarantee role visibility/i,
+  n8n_users_create:
+    /role defaults to global:member.*bind INVITE to the exact email.*pending user exists/i,
+  n8n_users_delete: /userId accepts no transfer target.*bind DELETE to that ID/i,
+  n8n_health:
+    /one redirect-free same-origin .* 10-second timeout.*requires configured URL\/key values/i,
+  n8n_insights_summary:
+    /startDate and endDate are inclusive.*startDate <= endDate.*omitting both requests n8n's default range/i,
+  n8n_audit_generate:
+    /Omitting categories lets n8n choose its complete default.*daysAbandonedWorkflow changes only/i,
+  n8n_search_workflows:
+    /searchIn selects local fields after active filters upstream.*cursor and limit select one page/i,
+  n8n_get_node_docs:
+    /four-value node key.*no n8n URL, API key, network, or elevated mode.*never follows/i,
+  n8n_list_node_types:
+    /cursor selects the start, maxPages bounds continuation, and active filters upstream.*starting at the first page and reaching the end/i,
+  n8n_introspect:
+    /quick uses 24h\/20 and caps maxExecutions at 25.*deep uses 168h\/50.*includeSanitizedLabels=false/i,
+  n8n_community_packages_list: /zero-input call retains at most 100.*exact total\/omitted counts/i,
+};
+
+interface ToolDefinitionMatrixObservation {
+  readonly operation: string;
+  readonly destructiveHint: boolean | undefined;
+  readonly description: string;
+}
+
+// Matrix scope: the final MCP tools/list definition surface and the local policy class that
+// governs each registered handler. Tool/annotation semantics come from the official MCP 2025-06-18
+// specification: https://modelcontextprotocol.io/specification/2025-06-18/server/tools
+// This matrix does not claim to prove n8n endpoint behavior. Request/response effects are owned by
+// the positive and adversarial tool-contract suites; Community-version truth is owned by the
+// disposable 2.30.5/2.30.7 compatibility gate. Copy quality beyond the enumerated semantic facts is
+// frozen by the normalized tools/list digest and remains a human/auditor judgment.
+function toolDefinitionMatrixViolations(
+  name: ToolName,
+  observation: ToolDefinitionMatrixObservation,
+): string[] {
+  const violations: string[] = [];
+  const expectedOperation = EXPECTED_TOOL_OPERATIONS[name];
+  const expectedDestructiveHint =
+    expectedOperation !== "read-only" && !NON_DESTRUCTIVE_MUTATIONS.has(name);
+
+  if (observation.operation !== expectedOperation) violations.push("operation");
+  if (observation.destructiveHint !== expectedDestructiveHint) {
+    violations.push("destructiveHint");
+  }
+  if (!DESCRIPTION_PARAMETER_SEMANTICS[name].test(observation.description)) {
+    violations.push("tool-specific parameter semantics");
+  }
+  if (!/\brequires?\b/i.test(observation.description)) {
+    violations.push("authorization or configuration boundary");
+  }
+  if (!/\breturns?\b/i.test(observation.description)) violations.push("return semantics");
+
+  return violations;
+}
+
 const APPROVED_TOOL_METADATA_SHA256 =
-  "8347c1cc4b90d65f3e03cc28975a0c32349509f731f9e23942f7a21ad2a76633";
+  "ac506ebd6f7c65ea060093cd84d2dbab74590b8e2a3e0789966b39ebfbbcd9a0";
 
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
@@ -124,7 +282,11 @@ test("all 44 tools publish conservative annotations from the typed registry", as
       assert(tool, `Missing listed tool ${definition.name}`);
       assert.equal(tool.annotations?.readOnlyHint, definition.operation === "read-only");
       assert.equal(tool.annotations?.destructiveHint, definition.annotations.destructiveHint);
-      assert.equal(tool.annotations?.destructiveHint, definition.operation !== "read-only");
+      assert.equal(
+        tool.annotations?.destructiveHint,
+        definition.operation !== "read-only" &&
+          !NON_DESTRUCTIVE_MUTATIONS.has(definition.name as (typeof EXPECTED_TOOLS)[number]),
+      );
       assert.equal(tool.annotations?.idempotentHint, definition.annotations.idempotentHint);
       assert.equal(tool.annotations?.openWorldHint, definition.annotations.openWorldHint);
       assert(tool.inputSchema);
@@ -133,6 +295,118 @@ test("all 44 tools publish conservative annotations from the typed registry", as
   } finally {
     await client.close();
     await server.close();
+  }
+});
+
+test("additive creates and the broad audit publish non-destructive hints without weakening policy", () => {
+  for (const [name, expectedOperation] of NON_DESTRUCTIVE_MUTATIONS) {
+    const definition = TOOL_DEFINITIONS.find((candidate) => candidate.name === name);
+    assert(definition, `Missing typed definition for ${name}`);
+    assert.equal(definition.operation, expectedOperation, `${name} changed its policy class`);
+    assert.equal(definition.annotations.readOnlyHint, false);
+    assert.equal(definition.annotations.destructiveHint, false);
+    assert.match(
+      definition.description,
+      name === "n8n_audit_generate" ? /non-destructive/i : /additive write/i,
+      `${name} does not explain why destructiveHint is false`,
+    );
+  }
+});
+
+test("the complete 44-row definition matrix matches the final MCP surface bidirectionally", async () => {
+  const matrixNames = Object.keys(EXPECTED_TOOL_OPERATIONS).sort();
+  const semanticNames = Object.keys(DESCRIPTION_PARAMETER_SEMANTICS).sort();
+  const expectedNames = [...EXPECTED_TOOLS].sort();
+  assert.deepEqual(matrixNames, expectedNames);
+  assert.deepEqual(semanticNames, expectedNames);
+  assert.deepEqual(
+    new Set(Object.values(EXPECTED_TOOL_OPERATIONS)),
+    new Set<ToolOperation>(["read-only", "write", "unsafe"]),
+  );
+
+  const { client, server } = await connectedClient();
+  try {
+    const listed = await client.listTools();
+    assert.deepEqual(listed.tools.map((tool) => tool.name).sort(), expectedNames);
+
+    for (const name of EXPECTED_TOOLS) {
+      const definition = TOOL_DEFINITIONS.find((candidate) => candidate.name === name);
+      const published = listed.tools.find((candidate) => candidate.name === name);
+      assert(definition, `Missing typed definition for ${name}`);
+      assert(published, `Missing published definition for ${name}`);
+      assert.deepEqual(
+        toolDefinitionMatrixViolations(name, {
+          operation: definition.operation,
+          destructiveHint: published.annotations?.destructiveHint,
+          description: published.description ?? "",
+        }),
+        [],
+        `${name} violates the reviewed definition matrix`,
+      );
+    }
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test("every definition-matrix invariant rejects a controlled synthetic mutation", () => {
+  for (const name of EXPECTED_TOOLS) {
+    const definition = TOOL_DEFINITIONS.find((candidate) => candidate.name === name);
+    assert(definition, `Missing typed definition for ${name}`);
+    const expectedOperation = EXPECTED_TOOL_OPERATIONS[name];
+    const expectedDestructiveHint =
+      expectedOperation !== "read-only" && !NON_DESTRUCTIVE_MUTATIONS.has(name);
+    const validObservation: ToolDefinitionMatrixObservation = {
+      operation: expectedOperation,
+      destructiveHint: expectedDestructiveHint,
+      description: definition.description,
+    };
+    assert.deepEqual(toolDefinitionMatrixViolations(name, validObservation), []);
+
+    const alternateOperation: ToolOperation =
+      expectedOperation === "read-only" ? "write" : "read-only";
+    assert(
+      toolDefinitionMatrixViolations(name, {
+        ...validObservation,
+        operation: alternateOperation,
+      }).includes("operation"),
+      `${name} matrix did not reject an operation mutation`,
+    );
+    assert(
+      toolDefinitionMatrixViolations(name, {
+        ...validObservation,
+        destructiveHint: !expectedDestructiveHint,
+      }).includes("destructiveHint"),
+      `${name} matrix did not reject an annotation mutation`,
+    );
+
+    const semanticMatch = definition.description.match(DESCRIPTION_PARAMETER_SEMANTICS[name]);
+    assert(semanticMatch?.[0], `${name} has no tool-specific semantic match to mutate`);
+    assert(
+      toolDefinitionMatrixViolations(name, {
+        ...validObservation,
+        description: definition.description.replace(
+          semanticMatch[0],
+          "[removed tool-specific semantics]",
+        ),
+      }).includes("tool-specific parameter semantics"),
+      `${name} matrix did not reject removal of its reviewed interaction`,
+    );
+    assert(
+      toolDefinitionMatrixViolations(name, {
+        ...validObservation,
+        description: definition.description.replace(/\brequires?\b/giu, "needs"),
+      }).includes("authorization or configuration boundary"),
+      `${name} matrix did not reject removal of its authorization disclosure`,
+    );
+    assert(
+      toolDefinitionMatrixViolations(name, {
+        ...validObservation,
+        description: definition.description.replace(/\breturns?\b/giu, "emits"),
+      }).includes("return semantics"),
+      `${name} matrix did not reject removal of its return disclosure`,
+    );
   }
 });
 

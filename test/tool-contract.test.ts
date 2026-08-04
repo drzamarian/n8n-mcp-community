@@ -407,7 +407,7 @@ test("the Introspect registration exactly matches its approved public contract",
   assert.equal(definition.title, "Inspect n8n workflow");
   assert.equal(
     definition.description,
-    "Inspect one workflow and bounded saved executions with deterministic local rules. Use quick for triage and deep for limited redacted details; use n8n_audit_generate for instance security or n8n_workflows_get for raw structure. Never executes; returns findings and coverage.",
+    "Inspect one workflow and saved executions with 23 deterministic local rules. profile sets paired defaults: quick uses 24h/20 and caps maxExecutions at 25; deep uses 168h/50 and reads at most four redacted details. includeSanitizedLabels=false keeps labels opaque; true opts into bounded sanitized labels. Use n8n_audit_generate for instance security or n8n_workflows_get for raw structure. Requires workflow/execution read permission; never executes or calls AI; returns findings and coverage.",
   );
 });
 
@@ -1256,7 +1256,7 @@ test("all 44 tools complete their positive MCP contract against a bounded Public
     );
     assert.equal(auditDefinition?.operation, "unsafe");
     assert.equal(auditDefinition.annotations.readOnlyHint, false);
-    assert.equal(auditDefinition.annotations.destructiveHint, true);
+    assert.equal(auditDefinition.annotations.destructiveHint, false);
     assert.deepEqual(audit.body, {
       additionalOptions: {
         categories: ["credentials", "nodes"],

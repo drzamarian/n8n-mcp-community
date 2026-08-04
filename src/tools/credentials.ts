@@ -82,10 +82,11 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_credentials_create",
     title: "Create credential",
     description:
-      "Create one credential from a supported public schema. Use n8n_credentials_schema first; use n8n_credentials_update when the credential already exists. Secret values belong only in input and are excluded from logs and output; returns metadata only.",
+      "Create and persist one credential as an additive write. Use n8n_credentials_schema first; use n8n_credentials_update when the credential exists. type selects the schema the caller should use to construct data, and isResolvable is sent only when supplied. Requires write/unsafe mode plus credential-create permission. Secret values belong only in input and are excluded from logs and output; returns metadata only.",
     operation: "write",
     outputDataDescription:
       "Validated credential metadata with id, name, type, optional timestamps, managed/global flags, and resolvability. Stored credential values are never returned.",
+    destructive: false,
     input: {
       name: z
         .string()
@@ -115,7 +116,7 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_credentials_delete",
     title: "Delete credential",
     description:
-      "Permanently delete one stored credential, which can break referencing workflows. Use n8n_credentials_usage first; use n8n_credentials_update when replacement is sufficient. Unsafe mode and exact confirmation are required; returns the ID with deleted=true.",
+      "Permanently delete one stored credential, which can break every referencing workflow. Use n8n_credentials_usage across all pages first; use n8n_credentials_update when replacement is sufficient. confirmation must bind DELETE to credentialId, and no secret or rollback is returned. Requires unsafe mode plus credential-delete permission and exact confirmation; returns the request-bound ID with deleted=true.",
     operation: "unsafe",
     outputDataDescription:
       "Object with the validated input credentialId and deleted=true. Identity is bound to the request because n8n does not consistently return the deleted credential ID.",
@@ -135,7 +136,7 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_credentials_schema",
     title: "Get credential schema",
     description:
-      "Get the Public API field schema for one credential type. Use it before n8n_credentials_create or replacement-data updates; use n8n_credentials_get for stored metadata. Returns schema fields supplied by n8n, never stored secret values.",
+      "Get n8n's Public API field schema for one credential type. Use it before n8n_credentials_create or replacement-data updates; use n8n_credentials_get for stored metadata. credentialType is a route selector, not a stored credential ID, so this call never reads credential values. Requires schema-read permission; returns the validated upstream field contract without testing credentials.",
     operation: "read-only",
     outputDataDescription:
       "Validated Public API schema object for the requested credential type. It describes accepted fields and constraints but never contains stored credential values.",
@@ -153,7 +154,7 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_credentials_list",
     title: "List credentials",
     description:
-      "List one page of credential metadata through the endpoint supported from n8n Community 2.30.5. Use it for discovery; use n8n_credentials_get when the ID is known. Returns metadata and a cursor, never credential values.",
+      "List one Public API page of credential metadata using the endpoint supported from n8n Community 2.30.5. Use it for discovery; use n8n_credentials_get when the ID is known. cursor resumes a prior page and limit bounds that single request; this call never auto-paginates. Requires credential-list permission; returns metadata and nextCursor, never stored values.",
     operation: "read-only",
     outputDataDescription:
       "Object with data (up to 100 credential metadata records) and nextCursor (string or null). Records contain allowlisted metadata only; credential values are rejected.",
@@ -172,7 +173,7 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_credentials_get",
     title: "Get credential",
     description:
-      "Get public metadata for one stored credential. Use it when the ID is known; use n8n_credentials_list for discovery and n8n_credentials_schema for type fields. Returns validated metadata without retrieving secret values.",
+      "Get public metadata for one stored credential by stable ID. Use it for a known target; use n8n_credentials_list for discovery and n8n_credentials_schema for type fields. credentialId identifies stored metadata only: the endpoint and output contract do not retrieve credential values or test the external service. Requires credential-read permission; returns validated identity, type, flags, and timestamps.",
     operation: "read-only",
     outputDataDescription:
       "One validated credential metadata record with id, name, type, optional timestamps, managed/global flags, and resolvability; no stored credential values.",
@@ -186,7 +187,7 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_credentials_update",
     title: "Update credential",
     description:
-      "Update selected metadata or values on an existing credential. Use n8n_credentials_schema for data fields; use n8n_credentials_create for a new credential. Supply at least one field, and data when changing type; returns metadata without secret values.",
+      "Update selected metadata or values on one stored credential, potentially breaking dependent workflows. Use n8n_credentials_schema for data fields and n8n_credentials_create for a new credential. Supply at least one field; changing type also requires data. isPartialData=false treats data as replacement, while true requests a partial merge. Requires write/unsafe mode plus update permission; returns metadata without secret values.",
     operation: "write",
     outputDataDescription:
       "Updated credential metadata with id, name, type, optional timestamps, managed/global flags, and resolvability. Supplied credential values are never echoed.",
@@ -254,10 +255,10 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_credentials_test",
     title: "Test credential",
     description:
-      "Test one stored credential by allowing n8n to contact its external service. Use n8n_credentials_get for metadata-only inspection; do not call this when network contact is unwanted. Unsafe mode and exact confirmation are required; returns a bounded value-free status.",
+      "Test one stored credential by allowing n8n to contact its external service, which receives and may log the attempt. Use n8n_credentials_get for metadata-only inspection and do not call this when network contact is unwanted. confirmation must bind TEST to credentialId. Requires unsafe mode plus test permission and exact confirmation; returns only the target-bound OK/Error outcome and withholds the upstream diagnostic message because it may contain secrets.",
     operation: "unsafe",
     outputDataDescription:
-      "Object with credentialId, bounded status (at most 64 characters), optional message (at most 512 characters), and truncated=true when either upstream string was shortened.",
+      "Object with credentialId, status OK or Error, and a server-authored message that discloses only whether the test succeeded. The untrusted upstream diagnostic message is never returned.",
     openWorld: true,
     input: {
       credentialId: identifier("Stable ID of the stored credential to test."),
@@ -268,25 +269,16 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
       expected: `TEST ${input.credentialId}`,
     }),
     handler: async (input, context) => {
-      // The external test already ran by the time this response arrives, so an over-long
-      // status/message must be truncated rather than rejected: discarding a completed outcome
-      // would report a generic error for a side effect that genuinely happened.
-      const raw = z.object({ status: z.string(), message: z.string().optional() }).parse(
+      const raw = z.object({ status: z.enum(["OK", "Error"]) }).parse(
         await context.client().request({
           method: "POST",
           path: `/credentials/${pathSegment(input.credentialId)}/test`,
         }),
       );
-      const status = raw.status.slice(0, 64);
-      const message = raw.message === undefined ? undefined : raw.message.slice(0, 512);
-      const truncated =
-        status.length < raw.status.length ||
-        (raw.message !== undefined && message !== undefined && message.length < raw.message.length);
       return {
         credentialId: input.credentialId,
-        status,
-        ...(message === undefined ? {} : { message }),
-        ...(truncated ? { truncated: true } : {}),
+        status: raw.status,
+        message: raw.status === "OK" ? "Credential test succeeded." : "Credential test failed.",
       };
     },
   }),
@@ -294,7 +286,7 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_credentials_usage",
     title: "Find credential usage",
     description:
-      "Scan one bounded workflow page for exact references to a credential ID. Use it before n8n_credentials_update or deletion; use n8n_credentials_get for metadata only. Continue nextCursor for full coverage; returns matching workflows/nodes and unresolved counts.",
+      "Scan one bounded workflow page for exact references to a credential ID. Use it before n8n_credentials_update or deletion; use n8n_credentials_get for metadata only. active filters upstream, cursor resumes the scan, and unresolved legacy references are counted but never matched; coverage is complete only when nextCursor is null. Requires workflow-list permission; returns bounded workflow/node matches and omission counts.",
     operation: "read-only",
     outputDataDescription:
       "Object with credentialId, workflowsExamined, matchingWorkflowCount, workflows with at most 200 total node details and 20 per workflow, nextCursor, scanComplete, truncation counts, referencesScanned, and referencesUnresolved.",

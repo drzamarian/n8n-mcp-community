@@ -45,8 +45,9 @@ The runtime has three local modes:
 
 - `read-only` allows only tools classified as read-only;
 - `write` also allows mutation tools that do not use the separate unsafe
-  confirmation gate; all mutation tools still advertise the conservative MCP
-  destructive hint;
+  confirmation gate. Non-read tools use the conservative MCP destructive hint
+  by default; reviewed additive or non-destructive operations publish an
+  explicit false override;
 - `unsafe` allows all tools, but each unsafe call requires an exact,
   input-bound confirmation phrase.
 

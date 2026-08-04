@@ -85,7 +85,7 @@ export const utilityTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_health",
     title: "Check n8n health",
     description:
-      "Perform a bounded same-origin health check against the configured n8n instance. Use it for reachability only; use an authenticated read tool such as n8n_workflows_list to validate API-key access. Returns ok=true and the HTTP status, not API capability.",
+      "Perform one redirect-free same-origin /healthz request with a 10-second timeout. Use it for HTTP reachability only; use an authenticated read tool such as n8n_workflows_list to validate API-key capability. The shared client still requires configured URL/key values, but no workflow data is read or changed. Returns ok=true and the successful status, never the upstream body.",
     operation: "read-only",
     outputDataDescription:
       "Object with ok=true and the successful n8n health endpoint HTTP status. It proves bounded reachability, not authenticated Public API capability.",
@@ -104,7 +104,7 @@ export const utilityTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_insights_summary",
     title: "Get insights summary",
     description:
-      "Get n8n's official aggregate insights summary for an optional ISO 8601 range. Use it for instance aggregates when the Community endpoint exists; use n8n_introspect for one workflow's diagnostics. Returns totals, failures, failure rate, time saved, and runtime aggregates.",
+      "Get n8n's official instance insights aggregates. Use it when the Community endpoint exists; use n8n_introspect for one workflow's diagnostics. startDate and endDate are inclusive offset-aware bounds, and supplying both requires startDate <= endDate; omitting both requests n8n's default range. Requires insights-read permission and never fabricates unavailable metrics; returns totals, failures, rates, time saved, and runtime aggregates.",
     operation: "read-only",
     outputDataDescription:
       "Validated aggregate object with total, failed, failureRate, timeSaved, and averageRunTime records; additional upstream aggregate fields may be present and are sanitized.",
@@ -145,11 +145,12 @@ export const utilityTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_audit_generate",
     title: "Generate security audit",
     description:
-      "Generate n8n's instance-level security audit. Use it for an explicitly approved instance audit; use n8n_introspect for deterministic analysis of one workflow without this side effect. Unsafe mode and exact confirmation are required; returns an untrusted report.",
+      "Run n8n's broad, non-destructive instance security scan. Use it for an owner-approved audit; use n8n_introspect for local analysis of one workflow. Omitting categories lets n8n choose its complete default, while daysAbandonedWorkflow changes only the inactive-workflow threshold. Requires unsafe mode, owner-authorized API access, and exact GENERATE AUDIT confirmation; returns a sanitized but untrusted report without changing instance configuration.",
     operation: "unsafe",
     preserveValidatedRootRecordValues: true,
     outputDataDescription:
       "Map of upstream report titles to validated reports. Each report has one official risk category and bounded sections with recommendations plus typed locations or instance details; all content is sanitized and untrusted.",
+    destructive: false,
     input: {
       categories: z
         .array(z.enum(["credentials", "database", "nodes", "filesystem", "instance"]))
@@ -192,7 +193,7 @@ export const utilityTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_search_workflows",
     title: "Search workflows",
     description:
-      "Search one bounded workflow page locally by name, node type, or tag name. Use it for substring matching; use n8n_workflows_list for an unsearched API page. Continue nextCursor because this is not an instance-wide index; returns value-free matches and coverage state.",
+      "Search one workflow page locally with a case-insensitive substring. Use it for name, node-type, or tag-name matching; use n8n_workflows_list for an unsearched API page. searchIn selects local fields after active filters upstream; cursor and limit select one page, not a global index, so continue nextCursor for coverage. Requires workflow-list permission; returns at most 50 value-free matches and explicit scan state.",
     operation: "read-only",
     outputDataDescription:
       "Object with query, workflowsExamined, matches (up to 50 identity/state records with matchedIn scopes), nextCursor, scanComplete, and truncated. It covers one requested workflow page, not a global index.",
@@ -265,7 +266,7 @@ export const utilityTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_get_node_docs",
     title: "Get node documentation",
     description:
-      "Return a bounded bundled reference for one of four allowlisted core n8n nodes. Use it for offline orientation; use n8n_list_node_types to inventory observed types, and official docs for other nodes. Performs no fetch and returns a title, summary, guidance, official URL, and provenance.",
+      "Return one immutable bundled reference selected by the four-value node key. Use it for offline orientation; use n8n_list_node_types to inventory observed types and official docs for any other node. Requires no n8n URL, API key, network, or elevated mode; it never follows the included URL. Returns source/fetched provenance, canonical type, title, summary, guidance, and official URL.",
     operation: "read-only",
     outputDataDescription:
       "Bundled reference with source=bundled_offline_reference, fetched=false, node type, title, concise summary/guidance, and official documentation URL. No network fetch occurs.",
@@ -285,7 +286,7 @@ export const utilityTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_list_node_types",
     title: "List observed node types",
     description:
-      "List node types observed across bounded workflow pages. Use it for usage inventory, not installed-package availability; use n8n_get_node_docs for bundled references or n8n_community_packages_list for package metadata. Returns counts and scan coverage.",
+      "Inventory node-type strings observed across bounded workflow pages. Use it for usage evidence, not installed availability; use n8n_get_node_docs for bundled references or n8n_community_packages_list for package metadata. cursor selects the start, maxPages bounds continuation, and active filters upstream; a complete result requires starting at the first page and reaching the end. Requires workflow-list permission; returns counts and exact coverage under 30-second/20,000-node budgets.",
     operation: "read-only",
     outputDataDescription:
       "Observed-workflow inventory with scope/availabilityStatement, up to 500 sorted types and counts, page/workflow/node counters, coverage booleans, nextCursor, resultComplete, truncated, and omittedTypeCount.",
@@ -391,7 +392,7 @@ export const utilityTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_introspect",
     title: "Inspect n8n workflow",
     description:
-      "Inspect one workflow and bounded saved executions with deterministic local rules. Use quick for triage and deep for limited redacted details; use n8n_audit_generate for instance security or n8n_workflows_get for raw structure. Never executes; returns findings and coverage.",
+      "Inspect one workflow and saved executions with 23 deterministic local rules. profile sets paired defaults: quick uses 24h/20 and caps maxExecutions at 25; deep uses 168h/50 and reads at most four redacted details. includeSanitizedLabels=false keeps labels opaque; true opts into bounded sanitized labels. Use n8n_audit_generate for instance security or n8n_workflows_get for raw structure. Requires workflow/execution read permission; never executes or calls AI; returns findings and coverage.",
     operation: "read-only",
     outputDataDescription:
       "Direct Introspect result containing schema/engine versions, status, workflow facts, sample coverage, finding/rule counts, metrics, bounded findings, rule coverage, limitations, and guidance. Every top-level field has its own published schema description.",
@@ -461,7 +462,7 @@ export const utilityTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_community_packages_list",
     title: "List community packages",
     description:
-      "List bounded metadata for installed n8n community packages. Use it for package inventory; use n8n_list_node_types for types observed in workflows. It never installs, updates, or removes packages and returns at most 100 untrusted records plus truncation counts.",
+      "List bounded metadata for installed n8n community packages. Use it for package inventory; use n8n_list_node_types for types actually observed in workflows. This zero-input call retains at most 100 of the endpoint's records and reports exact total/omitted counts; it does not download or inspect package contents. Requires package-list permission, never installs, updates, or removes packages, and returns untrusted metadata with author emails redacted.",
     operation: "read-only",
     outputDataDescription:
       "Object with data (at most 100 package metadata records), totalCount, truncated, and exact omittedCount. Records may include packageName, installedVersion, author metadata, and timestamps; author emails are redacted.",
