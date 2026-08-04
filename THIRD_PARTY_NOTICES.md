@@ -11,13 +11,13 @@ LICENSE or NOTICE file. They are exact-pinned in the lockfile, are not present
 in the runtime package or MCPB, and are accepted only at the listed version,
 license, repository, and integrity hash:
 
-| Package                 | License      | Upstream repository                                                                             |
+| Package                 | License      | Source or immutable package record                                                              |
 | ----------------------- | ------------ | ----------------------------------------------------------------------------------------------- |
 | `@humanfs/types@0.15.0` | Apache-2.0   | [humanwhocodes/humanfs](https://github.com/humanwhocodes/humanfs)                               |
 | `esrecurse@4.3.0`       | BSD-2-Clause | [estools/esrecurse](https://github.com/estools/esrecurse)                                       |
 | `flora-colossus@2.0.0`  | MIT          | [MarshallOfSound/flora-colossus](https://github.com/MarshallOfSound/flora-colossus/tree/v2.0.0) |
 | `imurmurhash@0.1.4`     | MIT          | [jensyt/imurmurhash-js](https://github.com/jensyt/imurmurhash-js)                               |
-| `keyv@4.5.4`            | MIT          | [jaredwray/keyv](https://github.com/jaredwray/keyv)                                             |
+| `keyv@4.5.4`            | MIT          | [npm registry record](https://registry.npmjs.org/keyv/4.5.4)                                    |
 | `natural-compare@1.4.0` | MIT          | [litejs/natural-compare-lite](https://github.com/litejs/natural-compare-lite)                   |
 
 Their exact SHA-512 integrity values are enforced in
@@ -26,9 +26,10 @@ or notice-file change fails the gate and requires a new review. A package with a
 missing notice file can never use this exception when it is a runtime dependency
 or bundled into a release artifact.
 
-Complete license texts are available from the linked upstream repositories and
-the SPDX identifiers above. The final MCPB must independently preserve the
-license and notice files for every dependency it actually bundles.
+Complete license texts are identified by the SPDX expressions above. The linked
+source repositories or immutable package records preserve provenance for the
+reviewed versions. The final MCPB must independently preserve the license and
+notice files for every dependency it actually bundles.
 
 `minimatch@10.2.5` is another development-only ESLint dependency and is licensed
 under the permissive Blue Oak Model License 1.0.0. Its installed package includes

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "packageVersion": "0.1.3",
   "npm": {
-    "sha256": "9a168cc417773df730a37077b4c10ee629494a404122bf69c13954eca2192381",
+    "sha256": "4f91da47b0d67fa2617dee6caa1e42b831da507ae6072e09a5f008def0aed1b5",
     "fileCount": 61,
     "files": [
       "CHANGELOG.md",
@@ -69,7 +69,7 @@
     ]
   },
   "mcpb": {
-    "sha256": "bd2bed987ee134c24a7ebc9e5a08777a992ef85f0f958becc2210531625d6094",
+    "sha256": "ec0985f42cd0ad435e22bb35bc4ad4dc110c501e3dc89f3af0c8ad266cb10bf8",
     "totalFileCount": 2173,
     "dependencyFileCount": 2134,
     "runtimeFiles": [
