@@ -17,11 +17,11 @@ release evidence from the client-matrix gates that remain open.
 
 The package declares Node.js `>=22.0.0`. That engine range is an acceptance
 floor, not evidence that every later major has completed the release matrix.
-The supported release lines for v0.1.2 are Node.js 22 and 24.
+The supported release lines for v0.1.3 are Node.js 22 and 24.
 
 ## n8n Community Edition
 
-The v0.1.2 floor candidate is n8n Community Edition 2.30.5, with 2.30.7 as the
+The v0.1.3 floor candidate is n8n Community Edition 2.30.5, with 2.30.7 as the
 current comparison target. The compiled public 44-tool candidate passed fresh,
 disposable lifecycles on both versions with synthetic fixtures, API-key
 revocation, resource cleanup, enforced candidate-process egress isolation, and
@@ -33,7 +33,7 @@ browser cookies, interactive `/rest` routes, paid project transfers, arbitrary
 workflow execution, or runtime node-catalog downloads.
 
 `n8n_credentials_list` is supported only from n8n 2.30.5 onward. Project
-selectors are intentionally absent because v0.1.2 does not present paid project
+selectors are intentionally absent because v0.1.3 does not present paid project
 capabilities as Community features. Other tools may also depend on endpoint
 availability and the permissions assigned to the API key; an HTTP 403 does not
 by itself mean the endpoint is absent.
@@ -72,7 +72,7 @@ surface.
 
 ## Deliberate exclusions
 
-v0.1.2 does not include:
+v0.1.3 does not include:
 
 - folders or data tables;
 - beta evaluation endpoints;
@@ -106,9 +106,9 @@ The release gate requires, for each n8n target version:
 The local npm and unsigned MCPB candidates already pass reviewed artifact
 installation under the committed dependency policy, inventory parity,
 license/notice, SBOM generation, and checksum/reproducibility checks. The
-separate no-override consumer probe retains the upstream residual documented in
-the security model. Signature verification plus client-specific install,
-upgrade, rollback, and uninstall evidence on every claimed operating system
-remain release gates.
+separate no-override consumer probe requires the patched
+`@hono/node-server` 2.x line and a zero-finding production audit. Signature
+verification plus client-specific install, upgrade, rollback, and uninstall
+evidence on every claimed operating system remain release gates.
 
 [Back to the documentation map](README.md)

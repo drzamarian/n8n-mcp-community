@@ -61,6 +61,19 @@ interface OfficialUrlsModule {
   assertOfficialUrlParity(source: string, manifestText: string): string[];
 }
 
+interface DemoReviewContractModule {
+  readPreviousDemoRelease(
+    root: string,
+    currentVersion: string,
+  ): { packageVersion: string; gifSha256: string; versionHistory: unknown };
+  assertDemoVersionHistory(
+    history: unknown,
+    currentVersion: string,
+    currentGifSha256: string,
+    previousRelease: unknown,
+  ): void;
+}
+
 async function loadScript<T>(file: string): Promise<T> {
   const href = pathToFileURL(path.join(process.cwd(), "scripts", file)).href;
   return (await import(href)) as T;
@@ -450,4 +463,170 @@ test("official-URL manifest parity matches the runtime source and catches drift"
   assert.equal(parity.length, 5);
   const dropped = manifest.split("\n").slice(1).join("\n");
   assert.throws(() => officialUrls.assertOfficialUrlParity(source, dropped), /diverges|not sorted/);
+});
+
+test("demo review history is anchored to immutable annotated release tags", async () => {
+  const contract = await loadScript<DemoReviewContractModule>("demo-review-contract.mjs");
+  const oldDigest = "a".repeat(64);
+  const currentDigest = "b".repeat(64);
+  const validHistory = [
+    { packageVersion: "0.1.2", gifSha256: oldDigest },
+    { packageVersion: "0.1.3", gifSha256: currentDigest },
+  ];
+  const initialAnchor = {
+    packageVersion: "0.1.2",
+    gifSha256: oldDigest,
+    versionHistory: null,
+  };
+
+  assert.doesNotThrow(() =>
+    contract.assertDemoVersionHistory(validHistory, "0.1.3", currentDigest, initialAnchor),
+  );
+  assert.throws(
+    () =>
+      contract.assertDemoVersionHistory(
+        [...validHistory, { packageVersion: "0.1.4", gifSha256: currentDigest }],
+        "0.1.4",
+        currentDigest,
+        {
+          packageVersion: "0.1.3",
+          gifSha256: currentDigest,
+          versionHistory: validHistory,
+        },
+      ),
+    /reused GIF digest/,
+  );
+  assert.throws(
+    () =>
+      contract.assertDemoVersionHistory(
+        [...validHistory].reverse(),
+        "0.1.2",
+        oldDigest,
+        initialAnchor,
+      ),
+    /strictly increasing/,
+  );
+  assert.throws(
+    () => contract.assertDemoVersionHistory(validHistory, "0.1.4", currentDigest, initialAnchor),
+    /final entry must bind/,
+  );
+  const nextDigest = "c".repeat(64);
+  const releasedAnchor = {
+    packageVersion: "0.1.3",
+    gifSha256: currentDigest,
+    versionHistory: validHistory,
+  };
+  assert.throws(
+    () =>
+      contract.assertDemoVersionHistory(
+        [validHistory[0], { packageVersion: "0.1.4", gifSha256: nextDigest }],
+        "0.1.4",
+        nextDigest,
+        releasedAnchor,
+      ),
+    /extend the predecessor tag history without rewriting/,
+  );
+  assert.throws(
+    () =>
+      contract.assertDemoVersionHistory(
+        [
+          validHistory[0],
+          { packageVersion: "0.1.3", gifSha256: "d".repeat(64) },
+          { packageVersion: "0.1.4", gifSha256: nextDigest },
+        ],
+        "0.1.4",
+        nextDigest,
+        releasedAnchor,
+      ),
+    /extend the predecessor tag history without rewriting/,
+  );
+  assert.doesNotThrow(() =>
+    contract.assertDemoVersionHistory(
+      [...validHistory, { packageVersion: "0.1.4", gifSha256: nextDigest }],
+      "0.1.4",
+      nextDigest,
+      releasedAnchor,
+    ),
+  );
+  assert.throws(
+    () =>
+      contract.assertDemoVersionHistory(
+        [{ packageVersion: "0.1.2", gifSha256: "e".repeat(64) }, validHistory[1]],
+        "0.1.3",
+        currentDigest,
+        initialAnchor,
+      ),
+    /initial history must bind/,
+  );
+  assert.throws(
+    () =>
+      contract.assertDemoVersionHistory(
+        [{ packageVersion: "0.1.1", gifSha256: "e".repeat(64) }, ...validHistory],
+        "0.1.3",
+        currentDigest,
+        initialAnchor,
+      ),
+    /initial history must bind/,
+  );
+
+  const root = await mkdtemp(path.join(os.tmpdir(), "demo-review-history-"));
+  const git = (...args: string[]): void => {
+    execFileSync("git", args, { cwd: root, stdio: "pipe" });
+  };
+  const writeRelease = async (version: string, gif: string): Promise<void> => {
+    await writeFile(path.join(root, "package.json"), `${JSON.stringify({ version })}\n`);
+    await writeFile(path.join(root, "docs", "assets", "demo.gif"), gif);
+  };
+  try {
+    git("init", "-q");
+    git("config", "user.email", "test@example.com");
+    git("config", "user.name", "Demo Review Test");
+    await mkdir(path.join(root, "docs", "assets"), { recursive: true });
+
+    await writeRelease("0.1.1", "demo gif v0.1.1");
+    git("add", ".");
+    git("commit", "-qm", "release 0.1.1");
+    git("tag", "-a", "v0.1.1", "-m", "v0.1.1");
+
+    await writeRelease("0.1.2", "demo gif v0.1.2");
+    git("add", ".");
+    git("commit", "-qm", "release 0.1.2");
+    git("tag", "-a", "v0.1.2", "-m", "v0.1.2");
+
+    const previous = contract.readPreviousDemoRelease(root, "0.1.3");
+    assert.deepEqual(previous, {
+      packageVersion: "0.1.2",
+      gifSha256: createHash("sha256").update("demo gif v0.1.2").digest("hex"),
+      versionHistory: null,
+    });
+
+    git("tag", "v0.1.3");
+    assert.throws(
+      () => contract.readPreviousDemoRelease(root, "0.1.4"),
+      /must be an annotated release tag/,
+    );
+    git("tag", "-d", "v0.1.3");
+
+    await mkdir(path.join(root, "release"), { recursive: true });
+    await writeRelease("0.1.3", "demo gif v0.1.3");
+    await writeFile(
+      path.join(root, "release", "demo-review.json"),
+      `${JSON.stringify({ schemaVersion: 2 })}\n`,
+    );
+    git("add", ".");
+    git("commit", "-qm", "release 0.1.3 with invalid review manifest");
+    git("tag", "-a", "v0.1.3", "-m", "v0.1.3");
+    assert.throws(
+      () => contract.readPreviousDemoRelease(root, "0.1.4"),
+      /schema version 2 and a valid version history/,
+    );
+
+    git("tag", "-a", "v0.1.4", "-m", "mismatched v0.1.4");
+    assert.throws(
+      () => contract.readPreviousDemoRelease(root, "0.1.5"),
+      /does not match its package version/,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

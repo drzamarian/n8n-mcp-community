@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 2,
+  "packageVersion": "0.1.3",
+  "command": "npx --yes n8n-mcp-community@0.1.3 --version",
+  "versionOutput": "0.1.3",
+  "gifSha256": "482833f3b177ddd3ccaaaf6358835765aaacdfc5ed78ebdbaff8c95215ba8b6d",
+  "versionHistory": [
+    {
+      "packageVersion": "0.1.2",
+      "gifSha256": "aca985a93d39e7d435bb2af6649d99d783aa29b49a37ed5caa42441e6b4640e2"
+    },
+    {
+      "packageVersion": "0.1.3",
+      "gifSha256": "482833f3b177ddd3ccaaaf6358835765aaacdfc5ed78ebdbaff8c95215ba8b6d"
+    }
+  ],
+  "logicalScreen": {
+    "width": 1200,
+    "height": 675
+  },
+  "frameDelaysCentiseconds": [50, 100, 100, 75, 75, 100, 83, 117, 100, 100, 300],
+  "reviewedFrameIndexes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+  "reviewMethod": "complete-frame-contact-sheet-and-animation-metadata"
+}

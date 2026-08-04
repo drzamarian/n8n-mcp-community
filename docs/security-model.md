@@ -1,6 +1,6 @@
 # Security model
 
-This document describes the controls and residual risks of the v0.1.2 source
+This document describes the controls and residual risks of the v0.1.3 source
 candidate. It is a threat model, not a claim that the software or the connected
 n8n instance is invulnerable.
 
@@ -153,18 +153,23 @@ invitations may have irreversible or externally visible effects.
 
 ### Downstream dependency resolution
 
-The repository and bundled MCPB use a root override to resolve the patched
-`@hono/node-server` 2.x line. npm does not inherit overrides from dependency
-packages, so a fresh consumer of the npm tarball currently resolves
-`@hono/node-server@1.19.15` through MCP SDK 1.29.0. That release contains the
-reviewed backport for encoded backslashes, while advisory registries may still
-report GHSA-frvp-7c67-39w9 during metadata convergence. The affected
-`serve-static` HTTP adapter is not imported by this stdio-only server. The
-verification gate installs the candidate in a disposable consumer without
-overrides, accepts only the exact known advisory or a fully clean advisory
-readback, pins the reviewed backport version, and proves the MCP inventory still
-starts. Closure still requires a new reviewed release and a clean no-override
-consumer audit of that released version.
+MCP SDK 1.30.0 permits the patched `@hono/node-server` 2.x line directly, so
+this project no longer needs a package-root override that downstream consumers
+would not inherit. The verification gate packs the candidate, installs it in a
+disposable consumer without overrides, rejects `@hono/node-server` versions
+below 2.0.5 or outside major version 2, requires a zero-finding production
+audit, and proves the exact MCP inventory still starts. Candidate evidence does
+not establish publication: the released version must pass the same clean
+consumer audit after npm provenance and the other external release readbacks
+agree.
+
+The SDK dependency range also permits the legacy 1.x line. A separate host
+project that co-installs another dependency constraining `@hono/node-server` to
+1.x may therefore resolve a different graph from the clean standalone probe.
+This server is distributed as a standalone stdio process, not as an embeddable
+library. Projects that intentionally embed it must audit their complete
+production graph and ensure `@hono/node-server` resolves to a patched 2.x
+release.
 
 ## Threats outside this boundary
 

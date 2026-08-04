@@ -1,7 +1,9 @@
+import { createHash } from "node:crypto";
 import { access, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
+import { assertDemoVersionHistory, readPreviousDemoRelease } from "./demo-review-contract.mjs";
 
 const root = process.cwd();
 const rootDocuments = [
@@ -217,6 +219,50 @@ if (
   !/!\[[^\]]+\]\(docs\/assets\/demo\.gif\)/.test(readme)
 ) {
   failures.push("README.md: the claimed animated demo is not embedded with descriptive alt text");
+}
+
+const demoGif = await readFile(path.join(root, "docs", "assets", "demo.gif"));
+const demoReview = JSON.parse(
+  await readFile(path.join(root, "release", "demo-review.json"), "utf8"),
+);
+const demoCommand = `npx --yes n8n-mcp-community@${packageManifest.version} --version`;
+const expectedDemoReview = {
+  schemaVersion: 2,
+  packageVersion: packageManifest.version,
+  command: demoCommand,
+  versionOutput: packageManifest.version,
+  gifSha256: createHash("sha256").update(demoGif).digest("hex"),
+  versionHistory: demoReview.versionHistory,
+  logicalScreen: {
+    width: demoGif.readUInt16LE(6),
+    height: demoGif.readUInt16LE(8),
+  },
+  frameDelaysCentiseconds: [50, 100, 100, 75, 75, 100, 83, 117, 100, 100, 300],
+  reviewedFrameIndexes: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+  reviewMethod: "complete-frame-contact-sheet-and-animation-metadata",
+};
+try {
+  assertDemoVersionHistory(
+    demoReview.versionHistory,
+    packageManifest.version,
+    expectedDemoReview.gifSha256,
+    readPreviousDemoRelease(root, packageManifest.version),
+  );
+} catch (error) {
+  failures.push(
+    error instanceof Error ? error.message : "release/demo-review.json: invalid history",
+  );
+}
+if (
+  !demoGif.subarray(0, 6).toString("ascii").startsWith("GIF8") ||
+  JSON.stringify(demoReview) !== JSON.stringify(expectedDemoReview)
+) {
+  failures.push(
+    "release/demo-review.json: reviewed GIF version, dimensions, timing, frames, or digest drifted",
+  );
+}
+if (!demoTranscript.includes(`$ ${demoCommand}\n${packageManifest.version}\n`)) {
+  failures.push("docs/demo-transcript.md: version command differs from the reviewed GIF contract");
 }
 
 const toolsMarkdown = contents.get("docs/tools.md");

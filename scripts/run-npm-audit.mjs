@@ -1,7 +1,10 @@
 import { spawnSync } from "node:child_process";
-import path from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
+import {
+  assertNoProjectNpmConfig,
+  npmAuditEnvironment,
+  verifyNpmAuditEnvironmentPolicySelfTest,
+} from "./npm-audit-environment.mjs";
 import { resolveNpmCli } from "./portable-cli.mjs";
 
 const mode = process.argv[2];
@@ -10,24 +13,16 @@ if (mode !== "full" && mode !== "production") {
 }
 
 const npmCli = resolveNpmCli("npm");
-const auditConfig = fileURLToPath(new URL("npm-audit.npmrc", import.meta.url));
 const args = ["audit", "--audit-level=low"];
 if (mode === "production") {
   args.push("--omit=dev");
 }
-const childEnvironment = { ...process.env };
-for (const key of Object.keys(childEnvironment)) {
-  if (key.toLowerCase() === "npm_config_allow_scripts") {
-    delete childEnvironment[key];
-  }
-}
+verifyNpmAuditEnvironmentPolicySelfTest();
+assertNoProjectNpmConfig(process.cwd());
 
 const result = spawnSync(npmCli.command, [...npmCli.argumentPrefix, ...args], {
   cwd: process.cwd(),
-  env: {
-    ...childEnvironment,
-    npm_config_userconfig: path.resolve(auditConfig),
-  },
+  env: npmAuditEnvironment(),
   stdio: "inherit",
   timeout: 120_000,
 });

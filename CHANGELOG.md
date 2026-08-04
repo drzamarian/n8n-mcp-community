@@ -6,6 +6,55 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.3] - Frozen release candidate
+
+Version 0.1.3 is a frozen release candidate. Availability is established only
+by matching npm provenance, GitHub Release assets and signatures, and MCP
+Registry readbacks; this immutable entry is not rewritten after publication.
+
+### Security
+
+- MCP SDK 1.30.0 now permits the patched `@hono/node-server` 2.x line in a
+  clean standalone downstream install, so the temporary package-root override
+  is removed. The no-override consumer gate now rejects every non-zero
+  production audit and every `@hono/node-server` release below 2.0.5 or outside
+  major version 2.
+- Published 0.1.2 installations remain pinned to MCP SDK 1.29.0 and do not gain
+  this corrected downstream resolution. Its former clean-consumer closure path
+  is superseded: upgrade to 0.1.3 only after npm, GitHub, and MCP Registry
+  readbacks all verify that release.
+- The reviewed lockfile resolves `fast-uri` 3.1.5 for
+  [GHSA-7p8r-x3mc-p8w7](https://github.com/advisories/GHSA-7p8r-x3mc-p8w7)
+  (high), `hono` 4.13.0 for
+  [GHSA-8j4g-w8fx-2239](https://github.com/advisories/GHSA-8j4g-w8fx-2239)
+  (moderate), and `ip-address` 10.4.0 for
+  [GHSA-mwp4-54f8-5fhr](https://github.com/advisories/GHSA-mwp4-54f8-5fhr)
+  (high),
+  [GHSA-4xrf-jv44-h6hh](https://github.com/advisories/GHSA-4xrf-jv44-h6hh)
+  (moderate), and
+  [GHSA-22jq-vg5j-6vgg](https://github.com/advisories/GHSA-22jq-vg5j-6vgg)
+  (moderate). Development-only `brace-expansion` 5.0.9 closes
+  [GHSA-mh99-v99m-4gvg](https://github.com/advisories/GHSA-mh99-v99m-4gvg)
+  and
+  [GHSA-rgw5-rvv9-x895](https://github.com/advisories/GHSA-rgw5-rvv9-x895),
+  both high severity.
+- The published 0.1.2 MCPB vendors the earlier advisory-flagged lockfile and
+  should be upgraded only after the 0.1.3 external readbacks agree. The npm
+  tarball does not bundle transitives, so a fresh 0.1.2 npm install currently
+  re-resolves the three runtime packages to patched releases; development-only
+  `brace-expansion` is absent from that consumer graph. Its separate MCP SDK
+  1.29.0 / `@hono/node-server` residual remains until the upgrade.
+
+### Changed
+
+- Downstream dependency verification now fails closed on any advisory instead
+  of retaining the former exact 1.x backport exception.
+- The public synthetic demo now renders 0.1.3 in every version-bearing frame;
+  a version history anchored to the previous annotated release tag must extend
+  without deletion or rewriting and use a unique GIF digest per release. It
+  joins the frame-review, timing, dimension, transcript, and digest checks to
+  reject a version-only bump that silently leaves the animation stale.
+
 ## [0.1.2] - Frozen release candidate
 
 Version 0.1.2 is a frozen release candidate. Availability is established only
@@ -166,6 +215,7 @@ Registry readbacks; this immutable entry is not rewritten after publication.
   publishable history; authenticated public release receipts remain supported.
 
 [Unreleased]: #unreleased
+[0.1.3]: #013---frozen-release-candidate
 [0.1.2]: #012---frozen-release-candidate
 [0.1.1]: https://github.com/drzamarian/n8n-mcp-community/releases/tag/v0.1.1
 [0.1.0]: https://github.com/drzamarian/n8n-mcp-community/releases/tag/v0.1.0

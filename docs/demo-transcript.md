@@ -6,8 +6,8 @@ standards-based MCP client interaction into a short terminal-style sequence; it
 does not claim that the client narration is a project CLI command.
 
 ```text
-$ npx --yes n8n-mcp-community@0.1.2 --version
-0.1.2
+$ npx --yes n8n-mcp-community@0.1.3 --version
+0.1.3
 
 MCP client initialized n8n-community
 44 tools | 5 resources | 4 prompts
@@ -20,7 +20,7 @@ schema 1.0.0 | engine 2.0.0 | status: complete
 findings: 0 critical | 0 high | 0 medium | 0 low | 0 info
 ```
 
-The version command depicts the v0.1.2 source candidate and becomes an
+The version command depicts the v0.1.3 source candidate and becomes an
 installation route only after external npm, GitHub, and Registry readback agree.
 The initialization and tool call lines represent MCP protocol
 events, not shell commands. The Introspect output is the documented empty
