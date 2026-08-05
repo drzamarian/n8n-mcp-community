@@ -44,7 +44,6 @@ export const pageLimit = (maximum = 100, defaultValue = maximum) =>
     .max(maximum)
     .default(defaultValue)
     .describe(`Maximum records to request in this page (1-${maximum}; default ${defaultValue}).`);
-export const confirmation = z.string().min(1).max(300);
 export const tagName = z
   .string()
   .min(1)

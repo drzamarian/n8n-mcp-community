@@ -82,7 +82,7 @@ export function registerPrompts(server: McpServer): void {
           role: "user",
           content: {
             type: "text",
-            text: `Handle this credential objective safely: ${objective}\n\nUse n8n_credentials_schema before creation or value changes. Never repeat, log, or place credential values in prose. Use metadata and usage tools for discovery. Explain that credential testing may contact an external service and requires unsafe mode plus exact confirmation.`,
+            text: `Handle this credential objective safely: ${objective}\n\nUse n8n_credentials_schema before creation or value changes. Never repeat, log, or place credential values in prose. Use metadata and usage tools for discovery. Explain that credential testing may contact an external service and requires unsafe mode.`,
           },
         },
       ],

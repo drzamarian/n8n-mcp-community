@@ -240,7 +240,7 @@ test("FABLE-R2-P3-06: execution stop derives a truthful state from the upstream 
       async (client) => {
         const result = await client.callTool({
           name: "n8n_executions_stop",
-          arguments: { executionId: "exec_1", confirmation: "STOP exec_1" },
+          arguments: { executionId: "exec_1" },
         });
         assert.equal(result.isError, undefined, JSON.stringify(result));
         const data = structuredData(result);
@@ -270,7 +270,7 @@ test("credential test withholds potentially secret-bearing upstream diagnostics"
     async (client) => {
       const result = await client.callTool({
         name: "n8n_credentials_test",
-        arguments: { credentialId: "cred_1", confirmation: "TEST cred_1" },
+        arguments: { credentialId: "cred_1" },
       });
       assert.equal(result.isError, undefined, JSON.stringify(result).slice(0, 500));
       const data = structuredData(result);
@@ -280,7 +280,7 @@ test("credential test withholds potentially secret-bearing upstream diagnostics"
 
       const messageLessResult = await client.callTool({
         name: "n8n_credentials_test",
-        arguments: { credentialId: "cred_1", confirmation: "TEST cred_1" },
+        arguments: { credentialId: "cred_1" },
       });
       assert.equal(messageLessResult.isError, undefined, JSON.stringify(messageLessResult));
       const messageLessData = structuredData(messageLessResult);

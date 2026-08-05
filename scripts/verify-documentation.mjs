@@ -29,12 +29,8 @@ const documentationAssets = (
   .map((entry) => `docs/assets/${entry.name}`)
   .sort();
 const packageDocumentationFiles = documentationFiles.filter((file) => file !== "docs/releasing.md");
-const shippedFiles = new Set([
-  ...rootDocuments,
-  "LICENSE",
-  ...packageDocumentationFiles,
-  ...documentationAssets,
-]);
+const repositoryOnlyAssets = new Set(["docs/assets/demo.gif"]);
+const shippedFiles = new Set([...rootDocuments, "LICENSE", ...packageDocumentationFiles]);
 const localLink = /\[[^\]]*\]\(([^)]+)\)/g;
 const fencedBlock = /```(json|bash|sh|shell)\s*\n([\s\S]*?)```/g;
 const failures = [];
@@ -90,7 +86,13 @@ if (limitationStart < 0 || limitationEnd <= limitationStart) {
 }
 
 function isUnsafeShellExample(body) {
-  return /\bcurl\b[^\n|]*\|\s*(?:ba)?sh\b|\bsudo\b|@latest\b|N8N_API_KEY=(?!["'])\S+/i.test(body);
+  const withApprovedLatestRemoved = body.replace(
+    /(^|[^A-Za-z0-9._/@:\\-])n8n-mcp-community@latest(?![A-Za-z0-9._/@:\\-])/gm,
+    "$1n8n-mcp-community@approved",
+  );
+  return /\bcurl\b[^\n|]*\|\s*(?:ba)?sh\b|\bsudo\b|@latest\b|N8N_API_KEY=(?!["'])\S+/i.test(
+    withApprovedLatestRemoved,
+  );
 }
 
 for (const fixture of [
@@ -98,6 +100,16 @@ for (const fixture of [
   { body: "N8N_API_KEY='replace-with-a-dedicated-api-key' node dist/index.js", unsafe: false },
   { body: "N8N_API_KEY=unquoted-secret node dist/index.js", unsafe: true },
   { body: "curl https://example.test/install | sh", unsafe: true },
+  { body: "npm install --global n8n-mcp-community@latest", unsafe: false },
+  { body: "npm install --global evil-n8n-mcp-community@latest", unsafe: true },
+  { body: "npm install --global @evil/n8n-mcp-community@latest", unsafe: true },
+  { body: "npm install --global ./n8n-mcp-community@latest", unsafe: true },
+  { body: "npm install --global .\\n8n-mcp-community@latest", unsafe: true },
+  { body: "npm install --global file:n8n-mcp-community@latest", unsafe: true },
+  { body: "npm install --global link:n8n-mcp-community@latest", unsafe: true },
+  { body: "npm install --global workspace:n8n-mcp-community@latest", unsafe: true },
+  { body: "npm install --global n8n-mcp-community@latest/subpath", unsafe: true },
+  { body: "npm install --global another-package@latest", unsafe: true },
 ]) {
   if (isUnsafeShellExample(fixture.body) !== fixture.unsafe) {
     failures.push("documentation shell-policy regression fixture failed");
@@ -150,6 +162,9 @@ if (packageFileAllowlist === null) {
       failures.push(`${file}: package-allowlisted Markdown is absent from the documentation scan`);
     }
   }
+  for (const asset of documentationAssets) {
+    if (packageFileAllowlist.has(asset)) shippedFiles.add(asset);
+  }
 }
 
 for (const [source, markdown] of contents) {
@@ -167,6 +182,9 @@ for (const [source, markdown] of contents) {
         JSON.parse(body);
       } catch {
         failures.push(`${source}: invalid fenced JSON block ${checkedJsonBlocks}`);
+      }
+      if (isUnsafeShellExample(body)) {
+        failures.push(`${source}: unsafe or non-reproducible command in JSON example`);
       }
       continue;
     }
@@ -190,7 +208,11 @@ for (const [source, markdown] of contents) {
       continue;
     }
     referencedLocalFiles.add(target.file);
-    if (shippedFiles.has(source) && !shippedFiles.has(target.file)) {
+    if (
+      shippedFiles.has(source) &&
+      !shippedFiles.has(target.file) &&
+      !repositoryOnlyAssets.has(target.file)
+    ) {
       failures.push(`${source}: local link target is absent from the package: ${target.file}`);
       continue;
     }
@@ -207,13 +229,60 @@ for (const asset of documentationAssets) {
   if (!referencedLocalFiles.has(asset)) {
     failures.push(`${asset}: tracked documentation asset is not referenced by Markdown`);
   }
-  if (!packageFileAllowlist?.has(asset)) {
+  if (repositoryOnlyAssets.has(asset) && packageFileAllowlist?.has(asset)) {
+    failures.push(`${asset}: repository-only demo media must not ship in the npm package`);
+  } else if (!repositoryOnlyAssets.has(asset) && !packageFileAllowlist?.has(asset)) {
     failures.push(`${asset}: referenced documentation asset is absent from package.json files`);
   }
 }
 
 const readme = contents.get("README.md") ?? "";
+const installation = contents.get("docs/installation.md") ?? "";
+const compatibility = contents.get("docs/compatibility.md") ?? "";
+const securityPolicy = contents.get("SECURITY.md") ?? "";
+const changelog = contents.get("CHANGELOG.md") ?? "";
 const demoTranscript = contents.get("docs/demo-transcript.md") ?? "";
+for (const requiredInstallGuidance of [
+  "command -v n8n-mcp-community",
+  "where n8n-mcp-community",
+  "## Verify the installation route you chose",
+  "### Global npm",
+  "### npx",
+  "### MCPB",
+  "### Update or roll back the MCPB",
+  "Privately distributed MCPB files do not update automatically",
+  "remove or uninstall control",
+  "without them, the check correctly fails",
+  "https://docs.npmjs.com/viewing-package-provenance/",
+]) {
+  if (!installation.includes(requiredInstallGuidance)) {
+    failures.push(`docs/installation.md: missing install guidance ${requiredInstallGuidance}`);
+  }
+}
+if (
+  !/"mcpServers"[\s\S]*?"command": "npx"[\s\S]*?"N8N_API_URL"/.test(installation) ||
+  !/"mcpServers"[\s\S]*?"command": "cmd"[\s\S]*?"npx"[\s\S]*?"N8N_API_URL"/.test(installation)
+) {
+  failures.push("docs/installation.md: npx examples must be complete copyable client entries");
+}
+const installUpgrade =
+  /### Upgrade from 0\.1\.x to 0\.2\.0\n([\s\S]*?)(?=\n## )/.exec(installation)?.[1] ?? "";
+const compatibilityUpgrade =
+  /## Upgrading from 0\.1\.x\n([\s\S]*?)(?=\n## )/.exec(compatibility)?.[1] ?? "";
+const changelogUpgrade = /### Upgrade from 0\.1\.x\n([\s\S]*?)(?=\n## )/.exec(changelog)?.[1] ?? "";
+if (
+  !installUpgrade.includes("n8n-mcp-community@0.1.4") ||
+  !installUpgrade.includes("n8n-mcp-community@latest") ||
+  !installUpgrade.includes("n8n-mcp-community@0.2.0") ||
+  !compatibilityUpgrade.includes("n8n-mcp-community@0.1.4") ||
+  !changelogUpgrade.includes("n8n-mcp-community@0.1.4")
+) {
+  failures.push("0.2.0 upgrade guidance is missing from the public documentation");
+}
+const [packageMajor, packageMinor] = String(packageManifest.version).split(".");
+if (!securityPolicy.includes(`currently ${packageMajor}.${packageMinor}.x`)) {
+  failures.push("SECURITY.md: maintained minor line differs from package.json");
+}
 if (
   demoTranscript.includes("animated README demo") &&
   !/!\[[^\]]+\]\(docs\/assets\/demo\.gif\)/.test(readme)
@@ -225,12 +294,11 @@ const demoGif = await readFile(path.join(root, "docs", "assets", "demo.gif"));
 const demoReview = JSON.parse(
   await readFile(path.join(root, "release", "demo-review.json"), "utf8"),
 );
-const demoCommand = `npx --yes n8n-mcp-community@${packageManifest.version} --version`;
+const demoCommand = "npm install --global n8n-mcp-community@latest";
 const expectedDemoReview = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   packageVersion: packageManifest.version,
   command: demoCommand,
-  versionOutput: packageManifest.version,
   gifSha256: createHash("sha256").update(demoGif).digest("hex"),
   versionHistory: demoReview.versionHistory,
   logicalScreen: {
@@ -261,8 +329,8 @@ if (
     "release/demo-review.json: reviewed GIF version, dimensions, timing, frames, or digest drifted",
   );
 }
-if (!demoTranscript.includes(`$ ${demoCommand}\n${packageManifest.version}\n`)) {
-  failures.push("docs/demo-transcript.md: version command differs from the reviewed GIF contract");
+if (!demoTranscript.includes(`$ ${demoCommand}\n`)) {
+  failures.push("docs/demo-transcript.md: install command differs from the reviewed GIF contract");
 }
 
 const toolsMarkdown = contents.get("docs/tools.md");

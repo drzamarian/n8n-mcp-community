@@ -8,13 +8,13 @@
     "url": "https://github.com/drzamarian/n8n-mcp-community",
     "source": "github"
   },
-  "version": "0.1.4",
+  "version": "0.2.0",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "n8n-mcp-community",
-      "version": "0.1.4",
+      "version": "0.2.0",
       "transport": {
         "type": "stdio"
       },

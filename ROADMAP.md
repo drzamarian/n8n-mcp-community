@@ -5,7 +5,7 @@ proposal enters the release surface only after a versioned specification,
 Community Edition evidence, security review, documentation, tests, and
 maintainer approval.
 
-## v0.1.0 release gate
+## Current release gate
 
 - Complete native-English documentation and inventory parity.
 - Pass disposable release-candidate lifecycles on n8n Community 2.30.5 and
@@ -14,11 +14,11 @@ maintainer approval.
   dependency notices.
 - Pass two independent adversarial implementation audits with zero actionable
   findings.
-- Enable repository security controls before the first public release.
+- Keep repository security controls and protected release gates enabled.
 
 ## Accepted backlog proposal
 
-Execution annotations remain a coherent two-tool proposal outside v0.1.0:
+Execution annotations remain a coherent two-tool proposal outside v0.2.0:
 
 - `n8n_executions_get_tags`
 - `n8n_executions_update_tags`

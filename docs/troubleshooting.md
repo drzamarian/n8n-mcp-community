@@ -60,20 +60,20 @@ missing tool list; they affect connected calls only.
 Tool errors include a correlation ID. The server does not return upstream error
 bodies.
 
-| Code                      | Meaning                                                            | Safe next step                                                                              |
-| ------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
-| `configuration_error`     | URL, key, mode, or HTTP policy is missing or invalid               | Run `doctor`; correct only the named setting                                                |
-| `operation_denied`        | The current mode or exact confirmation does not authorize the call | Review the tool contract; elevate mode only if intended                                     |
-| `invalid_path`            | A generated Public API path failed local validation                | Record the tool and sanitized input shape; report if reproducible                           |
-| `origin_mismatch`         | A generated URL did not retain the configured origin               | Stop and report privately                                                                   |
-| `request_too_large`       | The JSON request exceeded 2 MiB                                    | Narrow the operation or reduce workflow size                                                |
-| `response_too_large`      | The response exceeded 2 MiB                                        | Use filters or smaller pages; avoid repeating the same broad call                           |
-| `request_failed`          | No valid n8n response arrived before failure or timeout            | Check DNS, TLS, proxy, reachability, and n8n availability                                   |
-| `redirect_rejected`       | n8n or its proxy returned a redirect                               | Configure the final canonical base URL; do not bypass the control                           |
-| `upstream_error`          | n8n returned a non-success HTTP status                             | Check API-key scope and n8n logs using the correlation time                                 |
-| `invalid_json`            | n8n returned empty-invalid, non-UTF-8, or malformed JSON           | Inspect the proxy and n8n response without sharing sensitive bodies                         |
-| `upstream_shape_mismatch` | The n8n response did not match the supported API schema            | Most often the instance is below the documented 2.30.5 floor or a proxy altered the payload |
-| `tool_error`              | A local invariant or tool-specific check failed                    | Read the sanitized message and the tool's failure contract                                  |
+| Code                      | Meaning                                                  | Safe next step                                                                              |
+| ------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `configuration_error`     | URL, key, mode, or HTTP policy is missing or invalid     | Run `doctor`; correct only the named setting                                                |
+| `operation_denied`        | The current mode does not authorize the call             | Review the tool contract; elevate mode only if intended                                     |
+| `invalid_path`            | A generated Public API path failed local validation      | Record the tool and sanitized input shape; report if reproducible                           |
+| `origin_mismatch`         | A generated URL did not retain the configured origin     | Stop and report privately                                                                   |
+| `request_too_large`       | The JSON request exceeded 2 MiB                          | Narrow the operation or reduce workflow size                                                |
+| `response_too_large`      | The response exceeded 2 MiB                              | Use filters or smaller pages; avoid repeating the same broad call                           |
+| `request_failed`          | No valid n8n response arrived before failure or timeout  | Check DNS, TLS, proxy, reachability, and n8n availability                                   |
+| `redirect_rejected`       | n8n or its proxy returned a redirect                     | Configure the final canonical base URL; do not bypass the control                           |
+| `upstream_error`          | n8n returned a non-success HTTP status                   | Check API-key scope and n8n logs using the correlation time                                 |
+| `invalid_json`            | n8n returned empty-invalid, non-UTF-8, or malformed JSON | Inspect the proxy and n8n response without sharing sensitive bodies                         |
+| `upstream_shape_mismatch` | The n8n response did not match the supported API schema  | Most often the instance is below the documented 2.30.5 floor or a proxy altered the payload |
+| `tool_error`              | A local invariant or tool-specific check failed          | Read the sanitized message and the tool's failure contract                                  |
 
 Input-schema failures may be represented by the MCP client before the handler
 runs. They should make zero upstream requests.
@@ -117,9 +117,9 @@ API-key and data exposure; it is not a generic troubleshooting switch.
 ## A write or unsafe operation is denied
 
 The default mode is `read-only`. Write tools require `write` or `unsafe`.
-Unsafe tools require `unsafe` and the exact input-bound confirmation documented
-in [the tool reference](tools.md). Restart the MCP client after changing its
-environment. Do not keep unsafe mode enabled for convenience.
+Unsafe tools require `unsafe`; there is no second confirmation input. Restart
+the MCP client after changing its environment. Do not keep unsafe mode enabled
+for convenience.
 
 ## `n8n_credentials_list` fails
 

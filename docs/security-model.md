@@ -1,6 +1,6 @@
 # Security model
 
-This document describes the controls and residual risks of the v0.1.4 source
+This document describes the controls and residual risks of the v0.2.0 source
 candidate. It is a threat model, not a claim that the software or the connected
 n8n instance is invulnerable.
 
@@ -44,12 +44,11 @@ block. Protect the local process and configure only an intended n8n origin.
 The runtime has three local modes:
 
 - `read-only` allows only tools classified as read-only;
-- `write` also allows mutation tools that do not use the separate unsafe
-  confirmation gate. Non-read tools use the conservative MCP destructive hint
-  by default; reviewed additive or non-destructive operations publish an
-  explicit false override;
-- `unsafe` allows all tools, but each unsafe call requires an exact,
-  input-bound confirmation phrase.
+- `write` also allows ordinary mutation tools. Non-read tools use the
+  conservative MCP destructive hint by default; reviewed additive or
+  non-destructive operations publish an explicit false override;
+- `unsafe` allows all tools, including destructive and externally contacting
+  operations. Selecting this mode is the complete server-side gate.
 
 Policy rejection occurs before a tool creates an n8n client. Input schemas are
 strict and bounded. The upstream API key still defines the actual n8n
@@ -136,8 +135,8 @@ the workflow immediately.
 
 `n8n_credentials_test` asks n8n to test a stored credential. Depending on its
 type, n8n may contact a third-party service. It is therefore unsafe, requires an
-exact confirmation, and should be used only when that outbound contact is
-authorized.
+explicitly selected unsafe mode, and should be used only when that outbound
+contact is authorized.
 
 ### Discovery and diagnostics
 
@@ -148,9 +147,10 @@ security audit of n8n or its host.
 
 ### Destructive operations
 
-Exact confirmation reduces accidental calls but is not a recovery mechanism.
-Deletes, execution stops/retries, activation changes, archive changes, and user
-invitations may have irreversible or externally visible effects.
+Unsafe mode is authorization, not a recovery mechanism. Deletes, execution
+stops/retries, activation changes, archive changes, and user invitations may
+have irreversible or externally visible effects. Compatible clients can add
+native confirmations based on the published MCP annotations.
 
 ### Downstream dependency resolution
 

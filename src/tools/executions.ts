@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { defineTool, type ToolDefinition } from "./definition.js";
 import { booleanQuery, numberQuery } from "./common.js";
-import { confirmation, cursor, identifier, pageLimit, pathSegment } from "./schemas.js";
+import { cursor, identifier, pageLimit, pathSegment } from "./schemas.js";
 
 const executionId = z
   .union([
@@ -139,15 +139,11 @@ export const executionTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_executions_delete",
     title: "Delete execution",
     description:
-      "Permanently delete one saved execution and its retained history. Use it only after n8n_executions_get confirms the target; use read tools for inspection. confirmation must bind DELETE to the same executionId, and the server provides no recovery or rollback. Requires unsafe mode plus execution-delete permission and exact confirmation; returns the request-bound ID with deleted=true.",
+      "Permanently delete one saved execution and its retained history. Use it only after n8n_executions_get confirms the target; use read tools for inspection. The server provides no recovery or rollback. Requires unsafe mode plus execution-delete permission; returns the request-bound ID with deleted=true.",
     operation: "unsafe",
     outputDataDescription:
       "Object with the validated input executionId and deleted=true. Identity is bound to the request and does not rely on an upstream response body.",
-    input: { executionId, confirmation },
-    confirmation: (input) => ({
-      supplied: input.confirmation,
-      expected: `DELETE ${input.executionId}`,
-    }),
+    input: { executionId },
     handler: async (input, context) => {
       await context
         .client()
@@ -159,7 +155,7 @@ export const executionTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_executions_retry",
     title: "Retry execution",
     description:
-      "Retry one eligible saved execution, potentially repeating every external effect already reached. Use it only after n8n_executions_get review; use n8n_executions_stop for a running execution. loadWorkflow=true uses the currently saved workflow, while false uses the original execution snapshot. Requires unsafe mode, retry permission, and RETRY bound to executionId; returns metadata without payload values.",
+      "Retry one eligible saved execution, potentially repeating every external effect already reached. Use it only after n8n_executions_get review; use n8n_executions_stop for a running execution. loadWorkflow=true uses the currently saved workflow, while false uses the original execution snapshot. Requires unsafe mode and retry permission; returns metadata without payload values.",
     operation: "unsafe",
     outputDataDescription:
       "Allowlisted metadata for the new or retried execution, including scalar identity/status/timing/retry fields when supplied by n8n; raw execution values are omitted.",
@@ -169,12 +165,7 @@ export const executionTools: readonly ToolDefinition[] = Object.freeze([
         .boolean()
         .default(true)
         .describe("Load the currently saved workflow definition for the retry (default true)."),
-      confirmation,
     },
-    confirmation: (input) => ({
-      supplied: input.confirmation,
-      expected: `RETRY ${input.executionId}`,
-    }),
     handler: async (input, context) =>
       summarizeExecution(
         executionSchema.parse(
@@ -191,15 +182,11 @@ export const executionTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_executions_stop",
     title: "Stop execution",
     description:
-      "Request cancellation of one running execution without rolling back completed external effects. Use n8n_executions_get for inspection or n8n_executions_retry for an eligible saved failure. confirmation must bind STOP to executionId; a successful HTTP response alone does not prove cancellation. Requires unsafe mode plus stop permission and exact confirmation; returns stopped, already_finished, or unknown from validated state.",
+      "Request cancellation of one running execution without rolling back completed external effects. Use n8n_executions_get for inspection or n8n_executions_retry for an eligible saved failure. A successful HTTP response alone does not prove cancellation. Requires unsafe mode plus stop permission; returns stopped, already_finished, or unknown from validated state.",
     operation: "unsafe",
     outputDataDescription:
       "Object with executionId, stopped, state (stopped, already_finished, or unknown), and optional finished/status/stoppedAt metadata. HTTP success alone never asserts that a stop occurred.",
-    input: { executionId, confirmation },
-    confirmation: (input) => ({
-      supplied: input.confirmation,
-      expected: `STOP ${input.executionId}`,
-    }),
+    input: { executionId },
     handler: async (input, context) => {
       const upstream = z
         .object({

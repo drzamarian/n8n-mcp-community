@@ -13,7 +13,6 @@ import {
 } from "../security/redaction.js";
 import { TOOL_ENDPOINT_CONTRACTS } from "./endpoint-contracts.js";
 import { genericToolOutputContract, MUTATION_IDENTITY_KEYS } from "./output-contracts.js";
-import { confirmation as confirmationField } from "./schemas.js";
 
 export interface ToolContext {
   readonly startup: StartupConfig;
@@ -29,9 +28,6 @@ export interface ToolDefinition {
   readonly annotations: ToolAnnotations;
   readonly endpointContract: readonly string[];
   readonly outputDataDescription: string;
-  // The exact confirmation phrase template (e.g. "DELETE <workflowId>") for confirmation-guarded
-  // tools, derived from the tool's own confirmation function; absent for tools without a guard.
-  readonly confirmationPhrase?: string;
   validateInput(input: unknown): unknown;
   register(server: McpServer, context: ToolContext): void;
 }
@@ -43,10 +39,6 @@ interface ToolSpec<Shape extends ZodRawShape> {
   readonly operation: OperationClass;
   readonly outputDataDescription: string;
   readonly input: Shape;
-  readonly confirmation?: (input: z.output<z.ZodObject<Shape>>) => {
-    readonly supplied: string | undefined;
-    readonly expected: string;
-  };
   readonly handler: (input: z.output<z.ZodObject<Shape>>, context: ToolContext) => Promise<unknown>;
   readonly outputSchema?: z.ZodTypeAny;
   readonly formatResult?: (value: unknown) => CallToolResult;
@@ -196,24 +188,7 @@ export function defineTool<Shape extends ZodRawShape>(spec: ToolSpec<Shape>): To
   if (endpointContract === undefined) {
     throw new Error(`Tool ${spec.name} is missing its endpoint documentation contract.`);
   }
-  // Make the required confirmation phrase discoverable in the tool schema by deriving it from the
-  // tool's own confirmation function (single source of truth, so the documented phrase can never
-  // drift from the enforced one). A placeholder proxy turns `DELETE ${input.workflowId}` into the
-  // template `DELETE <workflowId>`. The phrase is documented on the field but is deliberately never
-  // echoed back on a mismatch, so the guard still demands a deliberate, constructed confirmation.
   const inputShape = { ...spec.input };
-  let confirmationPhrase: string | undefined;
-  if (spec.confirmation && "confirmation" in inputShape) {
-    const placeholder = new Proxy(
-      {},
-      { get: (_target, property) => (typeof property === "string" ? `<${property}>` : undefined) },
-    ) as z.output<z.ZodObject<Shape>>;
-    confirmationPhrase = spec.confirmation(placeholder).expected;
-    const substitution = confirmationPhrase.includes("<") ? " — substitute the real value(s)" : "";
-    (inputShape as Record<string, z.ZodTypeAny>).confirmation = confirmationField.describe(
-      `Deliberate-action guard. Must equal exactly: ${confirmationPhrase}${substitution}. A mismatch is rejected without echoing the expected phrase.`,
-    );
-  }
   const inputSchema = z.object(inputShape).strict();
   const genericOutput =
     spec.outputSchema === undefined
@@ -231,7 +206,6 @@ export function defineTool<Shape extends ZodRawShape>(spec: ToolSpec<Shape>): To
     annotations,
     endpointContract: Object.freeze([...endpointContract]),
     outputDataDescription: spec.outputDataDescription,
-    ...(confirmationPhrase === undefined ? {} : { confirmationPhrase }),
     validateInput: (input: unknown): unknown => inputSchema.parse(input),
     register(server: McpServer, context: ToolContext): void {
       server.registerTool(
@@ -246,7 +220,7 @@ export function defineTool<Shape extends ZodRawShape>(spec: ToolSpec<Shape>): To
         async (input) => {
           const correlationId = randomUUID();
           try {
-            authorizeOperation(context.startup.mode, spec.operation, spec.confirmation?.(input));
+            authorizeOperation(context.startup.mode, spec.operation);
             const value = await spec.handler(input, context);
             let result: CallToolResult;
             if (spec.formatResult) {

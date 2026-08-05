@@ -6,6 +6,50 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - Frozen release candidate
+
+Version 0.2.0 is a frozen release candidate. Availability is established only
+by matching npm provenance, GitHub Release assets and signatures, and MCP
+Registry readbacks; this immutable entry is not rewritten after publication.
+
+### Removed
+
+- **Breaking input-schema change:** the 14 unsafe tools no longer publish or
+  require the former `confirmation` input. Normal MCP clients refresh this
+  schema when they reconnect; raw scripted callers must stop sending that
+  field. This incompatible `0.x` change is released as a new minor version.
+
+### Changed
+
+- Selecting `N8N_MCP_MODE=unsafe` is now the complete server-side authorization
+  gate for the 14 elevated tools. Strict mode separation, MCP safety
+  annotations, n8n API permissions, input validation, and metadata-only mutation
+  audit events remain.
+- The README and client guides now use
+  `npm install --global n8n-mcp-community@latest` as the primary installation
+  path, with `npx` as the no-global-install alternative and exact version pins
+  retained for audit and rollback.
+- The README now follows a short landing-page flow: value, install, connect,
+  proof, and deeper docs. Copyable commands and clear npm, npx, and MCPB paths
+  replace the former release-review-first setup.
+- The demo now shows installation, connection, and a useful Introspect finding
+  with a clear fix. Its command uses `@latest`, and every frame uses synthetic
+  data.
+- Homebrew is listed as a planned CLI install channel. It remains separate from
+  MCPB updates and is not yet available.
+
+### Upgrade from 0.1.x
+
+- Existing URL, API-key, and mode values do not change.
+- Global npm users run the same install command again. Users who followed the
+  0.1.x pinned npx guide must replace `n8n-mcp-community@0.1.4` in their client
+  `args` with `n8n-mcp-community@latest` or `n8n-mcp-community@0.2.0`.
+- Privately distributed MCPB files update manually: download and install the
+  new signed bundle. The install guide also gives a remove-and-reinstall
+  rollback path.
+- Restart the MCP client after updating so it reloads `tools/list`. Custom code
+  that calls unsafe tools as raw JSON must remove the old `confirmation` field.
+
 ## [0.1.4] - Frozen release candidate
 
 Version 0.1.4 is a frozen release candidate. Availability is established only
@@ -241,6 +285,7 @@ Registry readbacks; this immutable entry is not rewritten after publication.
   publishable history; authenticated public release receipts remain supported.
 
 [Unreleased]: #unreleased
+[0.2.0]: #020---frozen-release-candidate
 [0.1.4]: #014---frozen-release-candidate
 [0.1.3]: #013---frozen-release-candidate
 [0.1.2]: #012---frozen-release-candidate

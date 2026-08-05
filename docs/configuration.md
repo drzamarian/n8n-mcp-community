@@ -45,16 +45,17 @@ upstream least privilege remains essential.
 
 ## Operation modes
 
-| Mode        | Read-only tools | Write tools |                             Unsafe tools |
-| ----------- | --------------: | ----------: | ---------------------------------------: |
-| `read-only` |         Allowed |      Denied |                                   Denied |
-| `write`     |         Allowed |     Allowed |                                   Denied |
-| `unsafe`    |         Allowed |     Allowed | Allowed with exact per-call confirmation |
+| Mode        | Read-only tools | Write tools | Unsafe tools |
+| ----------- | --------------: | ----------: | -----------: |
+| `read-only` |         Allowed |      Denied |       Denied |
+| `write`     |         Allowed |     Allowed |       Denied |
+| `unsafe`    |         Allowed |     Allowed |      Allowed |
 
 Unsafe tools delete, retry, stop, activate, deactivate, archive, unarchive,
-invite, or otherwise perform an operation requiring explicit acknowledgement.
-Their `confirmation` input must exactly match the phrase documented for that
-tool. A mode or confirmation denial occurs before any n8n request.
+invite, contact an external credential service, or otherwise carry elevated
+effects. Selecting `unsafe` is the complete server-side gate for these tools. A
+mode denial occurs before any n8n request; accurate MCP annotations let
+compatible clients add their native approval UX.
 
 Prefer a permanent read-only client entry. Create a separate temporary write or
 unsafe entry only when required, then remove or downgrade it after the task.

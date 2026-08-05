@@ -1,13 +1,92 @@
-# MCP client configuration
+# MCP client setup
 
-The server uses standard MCP over stdio. No client-specific support claim is
-made until the published npm and MCPB artifacts complete an end-to-end client
-matrix.
+The server uses MCP over stdio.
 
-## Generic source configuration
+## Recommended global npm setup
 
-Most local MCP clients accept a server name, command, arguments, and environment
-mapping. The equivalent source configuration is:
+Install once:
+
+```bash
+npm install --global n8n-mcp-community@latest
+```
+
+Add this to your MCP client:
+
+```json
+{
+  "mcpServers": {
+    "n8n-community": {
+      "command": "n8n-mcp-community",
+      "env": {
+        "N8N_API_URL": "https://n8n.example.com",
+        "N8N_API_KEY": "replace-with-a-dedicated-api-key",
+        "N8N_MCP_MODE": "read-only"
+      }
+    }
+  }
+}
+```
+
+Restart the client.
+
+## npx setup
+
+Do not want a global install? Use:
+
+```json
+{
+  "mcpServers": {
+    "n8n-community": {
+      "command": "npx",
+      "args": ["--yes", "n8n-mcp-community@latest"],
+      "env": {
+        "N8N_API_URL": "https://n8n.example.com",
+        "N8N_API_KEY": "replace-with-a-dedicated-api-key",
+        "N8N_MCP_MODE": "read-only"
+      }
+    }
+  }
+}
+```
+
+On Windows, use `cmd`:
+
+```json
+{
+  "mcpServers": {
+    "n8n-community": {
+      "command": "cmd",
+      "args": ["/c", "npx", "--yes", "n8n-mcp-community@latest"],
+      "env": {
+        "N8N_API_URL": "https://n8n.example.com",
+        "N8N_API_KEY": "replace-with-a-dedicated-api-key",
+        "N8N_MCP_MODE": "read-only"
+      }
+    }
+  }
+}
+```
+
+This Windows form is not yet release-tested.
+
+If a desktop client cannot find a global command, run
+`command -v n8n-mcp-community` on macOS/Linux or
+`where n8n-mcp-community` on Windows and use the returned full path. Recheck it
+after changing Node versions when you use nvm, fnm, or Volta.
+
+## MCPB setup for Claude Desktop
+
+1. Download the `.mcpb` from the
+   [latest release](https://github.com/drzamarian/n8n-mcp-community/releases/latest).
+2. Open **Settings → Extensions → Advanced settings → Install Extension…**.
+3. Pick the file and enter your n8n URL, API key, and mode.
+
+The MCPB contains no API key or n8n URL. See
+[Installation](installation.md#signed-mcpb) for checksum steps.
+
+## Source setup
+
+Contributors can run the built file:
 
 ```json
 {
@@ -25,71 +104,16 @@ mapping. The equivalent source configuration is:
 }
 ```
 
-Use an absolute path. Run `npm ci && npm run verify:contributor` first, place
-secrets only in the client's environment or secret UI, and restart the client
-after any configuration change. The exact file location and outer JSON shape
-belong to the client and may differ from this generic fragment.
+Run `npm ci && npm run verify:contributor` first. Use the full file path.
 
-## Exact-version npx configuration
+## Check the connection
 
-After npm provenance and GitHub release readback agree, replace
-`<VERIFIED_VERSION>` with that exact version:
+1. Confirm 44 tools, 5 resources, and 4 prompts.
+2. Call `n8n_health`.
+3. Call `n8n_workflows_list` with a small limit.
+4. Confirm that write tools fail in `read-only` mode.
 
-```json
-{
-  "mcpServers": {
-    "n8n-community": {
-      "command": "npx",
-      "args": ["--yes", "n8n-mcp-community@<VERIFIED_VERSION>"],
-      "env": {
-        "N8N_API_URL": "https://n8n.example.com",
-        "N8N_API_KEY": "replace-with-a-dedicated-api-key",
-        "N8N_MCP_MODE": "read-only"
-      }
-    }
-  }
-}
-```
-
-Verify the published provenance attestation before first use. Do not replace
-the exact version with `@latest`; explicit pins make review, rollback, and
-incident response deterministic.
-
-On Windows, a client that cannot launch `npx` directly may use:
-
-```json
-{
-  "command": "cmd",
-  "args": ["/c", "npx", "--yes", "n8n-mcp-community@<VERIFIED_VERSION>"]
-}
-```
-
-This Windows form is not yet release-tested.
-
-## MCPB path
-
-Compatible clients may be able to install the signed MCPB without editing JSON.
-The bundle contains the same compiled server and requests the same four
-settings documented in [Configuration](configuration.md). It does not contain
-an API key or instance URL.
-
-The project will publish client-specific MCPB instructions only after testing
-installation, signature and checksum inspection, configuration, exact inventory
-readback, a synthetic tool call, upgrade, rollback, and removal. An MCPB is not
-updated by Homebrew.
-
-## Post-connection verification
-
-For every client:
-
-1. Confirm exactly 44 tools, 5 resources, and 4 prompts.
-2. Read `n8n://usage-guide` before the first write.
-3. Call `n8n_health`, then a bounded `n8n_workflows_list`.
-4. Confirm writes are denied in the default read-only mode.
-5. Check the client's own logs and retention policy before handling sensitive
-   n8n metadata.
-
-If the client shows a different inventory, verify the executable path or exact
-package version and restart it. See [Troubleshooting](troubleshooting.md).
+If the counts are wrong, check the command and restart the client. See
+[Troubleshooting](troubleshooting.md).
 
 [Back to the documentation map](README.md)

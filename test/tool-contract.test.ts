@@ -324,27 +324,27 @@ const CALLS: Readonly<Record<string, Record<string, unknown>>> = {
     expectedVersionId: "v2",
     acknowledgeNonAtomicRisk: true,
   },
-  n8n_workflows_delete: { workflowId: "wf_1", confirmation: "DELETE wf_1" },
-  n8n_workflows_activate: { workflowId: "wf_1", confirmation: "ACTIVATE wf_1" },
-  n8n_workflows_deactivate: { workflowId: "wf_1", confirmation: "DEACTIVATE wf_1" },
+  n8n_workflows_delete: { workflowId: "wf_1" },
+  n8n_workflows_activate: { workflowId: "wf_1" },
+  n8n_workflows_deactivate: { workflowId: "wf_1" },
   n8n_workflows_get_version: { workflowId: "wf_1", versionId: "v1" },
   n8n_workflows_get_tags: { workflowId: "wf_1" },
   n8n_workflows_update_tags: { workflowId: "wf_1", tagIds: ["tag_1"] },
-  n8n_workflows_archive: { workflowId: "wf_1", confirmation: "ARCHIVE wf_1" },
-  n8n_workflows_unarchive: { workflowId: "wf_1", confirmation: "UNARCHIVE wf_1" },
+  n8n_workflows_archive: { workflowId: "wf_1" },
+  n8n_workflows_unarchive: { workflowId: "wf_1" },
   n8n_workflows_diff: { workflowId: "wf_1", fromVersionId: "v1" },
   n8n_executions_list: { includeData: true },
   n8n_executions_get: { executionId: "exec_1", includeData: true },
-  n8n_executions_delete: { executionId: "exec_1", confirmation: "DELETE exec_1" },
-  n8n_executions_retry: { executionId: "exec_1", confirmation: "RETRY exec_1" },
-  n8n_executions_stop: { executionId: "exec_1", confirmation: "STOP exec_1" },
+  n8n_executions_delete: { executionId: "exec_1" },
+  n8n_executions_retry: { executionId: "exec_1" },
+  n8n_executions_stop: { executionId: "exec_1" },
   n8n_credentials_create: {
     name: "n8n API",
     type: "n8nApi",
     data: { apiKey: OUTPUT_CANARY },
     isResolvable: true,
   },
-  n8n_credentials_delete: { credentialId: "cred_1", confirmation: "DELETE cred_1" },
+  n8n_credentials_delete: { credentialId: "cred_1" },
   n8n_credentials_schema: { credentialType: "n8nApi" },
   n8n_credentials_list: {},
   n8n_credentials_get: { credentialId: "cred_1" },
@@ -355,17 +355,17 @@ const CALLS: Readonly<Record<string, Record<string, unknown>>> = {
     isResolvable: true,
     isPartialData: false,
   },
-  n8n_credentials_test: { credentialId: "cred_1", confirmation: "TEST cred_1" },
+  n8n_credentials_test: { credentialId: "cred_1" },
   n8n_credentials_usage: { credentialId: "cred_1" },
   n8n_tags_list: {},
   n8n_tags_get: { tagId: "tag_1" },
   n8n_tags_create: { name: "production" },
   n8n_tags_update: { tagId: "tag_1", name: "updated" },
-  n8n_tags_delete: { tagId: "tag_1", confirmation: "DELETE tag_1" },
+  n8n_tags_delete: { tagId: "tag_1" },
   n8n_users_list: {},
   n8n_users_get: { userIdOrEmail: "user_1" },
-  n8n_users_create: { email: "member@example.test", confirmation: "INVITE member@example.test" },
-  n8n_users_delete: { userId: "user_1", confirmation: "DELETE user_1" },
+  n8n_users_create: { email: "member@example.test" },
+  n8n_users_delete: { userId: "user_1" },
   n8n_health: {},
   n8n_insights_summary: {
     startDate: "2026-07-01T00:00:00.000Z",
@@ -374,7 +374,6 @@ const CALLS: Readonly<Record<string, Record<string, unknown>>> = {
   n8n_audit_generate: {
     categories: ["credentials", "nodes"],
     daysAbandonedWorkflow: 30,
-    confirmation: "GENERATE AUDIT",
   },
   n8n_search_workflows: { query: "order", searchIn: ["name"] },
   n8n_get_node_docs: { node: "webhook" },
@@ -1021,7 +1020,7 @@ test("workflow update still fails closed when n8n adds pinned data the source di
   );
 });
 
-async function connect(mode: "read-only" | "unsafe") {
+async function connect(mode: "read-only" | "write" | "unsafe") {
   const server = createServer({ mode, allowInsecureHttp: false });
   const client = new Client({ name: "tool-contract-test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -1103,10 +1102,7 @@ test("workflow lifecycle tools require the requested target and confirmed state"
         async (client) => {
           const result = await client.callTool({
             name: `n8n_workflows_${action}`,
-            arguments: {
-              workflowId: "wf_1",
-              confirmation: `${action.toUpperCase()} wf_1`,
-            },
+            arguments: { workflowId: "wf_1" },
           });
           assert.equal(result.isError, true, `${action} accepted ${label} lifecycle metadata`);
           assert.match(JSON.stringify(result), expectedError);
@@ -1485,6 +1481,46 @@ test("read-only mode denies every write and unsafe tool before any network reque
         arguments: CALLS[definition.name],
       });
       assert.equal(result.isError, true, `${definition.name} should be denied`);
+    }
+    assert.equal(requests.length, 0);
+  } finally {
+    await client.close();
+    await server.close();
+    globalThis.fetch = originalFetch;
+    console.error = originalLog;
+    if (originalUrl === undefined) delete process.env.N8N_API_URL;
+    else process.env.N8N_API_URL = originalUrl;
+    if (originalKey === undefined) delete process.env.N8N_API_KEY;
+    else process.env.N8N_API_KEY = originalKey;
+  }
+});
+
+test("write mode allows ordinary writes and denies every unsafe tool before network", async () => {
+  const requests: CapturedRequest[] = [];
+  const originalFetch = globalThis.fetch;
+  const originalUrl = process.env.N8N_API_URL;
+  const originalKey = process.env.N8N_API_KEY;
+  const originalLog = console.error;
+  globalThis.fetch = createMockFetch(requests);
+  process.env.N8N_API_URL = ORIGIN;
+  process.env.N8N_API_KEY = "not-a-real-key";
+  console.error = () => undefined;
+  const { client, server } = await connect("write");
+  try {
+    const writeResult = await client.callTool({
+      name: "n8n_tags_create",
+      arguments: CALLS.n8n_tags_create,
+    });
+    assert.equal(writeResult.isError, undefined, JSON.stringify(writeResult));
+    assert.equal(requests.length, 1, "write mode did not reach the ordinary write handler");
+
+    requests.length = 0;
+    for (const definition of TOOL_DEFINITIONS.filter((tool) => tool.operation === "unsafe")) {
+      const result = await client.callTool({
+        name: definition.name,
+        arguments: CALLS[definition.name],
+      });
+      assert.equal(result.isError, true, `${definition.name} should be denied in write mode`);
     }
     assert.equal(requests.length, 0);
   } finally {
@@ -2099,7 +2135,7 @@ test("credential schemas retain official sensitive property names without stored
 test("credential schema and security audit reject non-official response shapes", async () => {
   for (const [name, arguments_, malformed] of [
     ["n8n_credentials_schema", { credentialType: "n8nApi" }, { fields: [] }],
-    ["n8n_audit_generate", { confirmation: "GENERATE AUDIT" }, { risk: [] }],
+    ["n8n_audit_generate", {}, { risk: [] }],
   ] as const) {
     await withConnectedClient(
       async () => json(malformed),
@@ -3099,7 +3135,6 @@ test("user invitation accepts n8n's lowercase normalization of a mixed-case emai
         arguments: {
           email: requestedEmail,
           role: "global:member",
-          confirmation: `INVITE ${requestedEmail}`,
         },
       });
       assert.equal(result.isError, undefined);

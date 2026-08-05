@@ -4,27 +4,79 @@
 
 # A security-focused Model Context Protocol server for self-hosted n8n Community Edition
 
-Connect an MCP client to a **bounded 44-tool n8n Community Edition management surface**: create, edit,
-activate, and delete workflows, update individual nodes surgically, and manage
-executions, credentials, tags, users, diagnostics, and instance metadata — 44
-carefully bounded tools in total. Safety here is **progressive, not
-restrictive**: the server defaults to read-only, `write` unlocks authoring,
-and `unsafe` unlocks every tool with an exact per-call confirmation phrase for
-each destructive operation. It starts offline, uses the supported n8n Public
-API, and never sends workflow data to an external AI provider.
+Give your AI client 44 tools for self-hosted n8n Community Edition. Manage
+workflows, nodes, runs, credentials, tags, users, and diagnostics. No paid n8n
+features. The server makes no external AI calls.
 
-> **Release evidence:** install only a version that appears consistently on
-> [npm](https://www.npmjs.com/package/n8n-mcp-community), the
-> [latest GitHub release](https://github.com/drzamarian/n8n-mcp-community/releases/latest),
-> and the MCP Registry entry `io.github.drzamarian/n8n-mcp-community`. A version
-> in the source tree remains a candidate until those external readbacks agree.
-> See [Installation](docs/installation.md).
+[![Install with npm](https://img.shields.io/badge/Install_with-npm-CB3837?logo=npm&logoColor=white)](#install)
+[![Download MCPB](https://img.shields.io/badge/Download-MCPB-6B4EFF)](https://github.com/drzamarian/n8n-mcp-community/releases/latest)
+[![Read the docs](https://img.shields.io/badge/Read-the_docs-1F6FEB)](docs/README.md)
 
-[Read the synthetic terminal demo transcript](docs/demo-transcript.md). It shows
-the exact-version startup, 44-tool inventory, and local Introspect
-diagnostics using only synthetic identifiers and documented output shapes.
+## Install
 
-[![Animated synthetic terminal demonstration showing the exact-version startup, MCP inventory, and local Introspect result](docs/assets/demo.gif)](docs/demo-transcript.md)
+You need Node.js 22 or 24, your n8n URL, and an n8n API key.
+
+### Install
+
+```bash
+npm install --global n8n-mcp-community@latest
+```
+
+`--global` installs the command once. Use `npx` below if you do not want a
+global install.
+
+### Connect
+
+```json
+{
+  "mcpServers": {
+    "n8n-community": {
+      "command": "n8n-mcp-community",
+      "env": {
+        "N8N_API_URL": "https://n8n.example.com",
+        "N8N_API_KEY": "replace-with-a-dedicated-api-key",
+        "N8N_MCP_MODE": "read-only"
+      }
+    }
+  }
+}
+```
+
+Restart your client. You should see 44 tools, 5 resources, and 4 prompts.
+
+If the client cannot find the command, run `command -v n8n-mcp-community` on
+macOS/Linux or `where n8n-mcp-community` on Windows. Put that full path in
+`"command"`.
+
+Want no global install? Copy this command into the client configuration shown
+in the full guide:
+
+```bash
+npx --yes n8n-mcp-community@latest
+```
+
+Want the Claude Desktop app flow? Use the MCPB below. See the full
+[installation guide](docs/installation.md) for updates, rollback, and checks.
+
+### Claude Desktop: install the MCPB (no Node.js needed)
+
+1. Open the [latest GitHub release](https://github.com/drzamarian/n8n-mcp-community/releases/latest).
+2. Download the file that ends in `.mcpb`.
+3. In Claude Desktop, open **Settings → Extensions → Advanced settings →
+   Install Extension…**.
+4. Pick the file. Enter your n8n URL, API key, and mode.
+
+[Anthropic's MCPB guide](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop)
+explains the same steps. Our [installation guide](docs/installation.md) explains
+how to check the download.
+
+> Install public builds only from
+> [npm](https://www.npmjs.com/package/n8n-mcp-community) or the
+> [latest GitHub release](https://github.com/drzamarian/n8n-mcp-community/releases/latest).
+
+[![Animated demo showing installation, connection, and a useful local Introspect finding](docs/assets/demo.gif)](docs/demo-transcript.md)
+
+[Read the demo transcript](docs/demo-transcript.md).
 
 ## Why this project
 
@@ -32,8 +84,8 @@ diagnostics using only synthetic identifiers and documented output shapes.
   n8n Community Edition, without presenting paid-only capabilities as available.
 - **44 useful tools, one explicit contract.** Every tool has bounded inputs,
   documented side effects, MCP safety annotations, and contract tests.
-- **Safe by default.** Read-only mode is the default. Writes and destructive or
-  externally contacting operations require progressively stronger gates.
+- **Safe by default.** Read-only mode is the default. You choose when to allow
+  writes or the full tool set.
 - **Deterministic Introspect.** `n8n_introspect` runs a local 23-rule engine;
   it does not execute workflows, call an agent, or contact an external model.
 - **Surgical node updates.** `n8n_update_node` changes one validated node path
@@ -44,13 +96,16 @@ diagnostics using only synthetic identifiers and documented output shapes.
 - **Data minimization.** Credential values, raw execution values, pin data, and
   static workflow data are not returned by the generic public tools.
 
+<details>
+<summary><strong>See verification evidence</strong></summary>
+
 ## Current verification
 
 The current source candidate has been verified with:
 
 - exactly **44 tools**, **5 resources**, and **4 prompts** over real stdio;
-- **295 passing tests** and the complete verification gate on Node.js 22.23.1
-  and 24.18.0;
+- **296 passing tests** locally on Node.js 24.18.1; CI and release gates require
+  the pinned Node.js 22.23.1 and 24.18.0 matrix;
 - zero findings from Gitleaks, Semgrep, Trivy, and both project-root
   production/full `npm audit` runs; all three source scanners are reproduced in
   CI, with immutable scanner/action identities;
@@ -70,90 +125,20 @@ repository-pinned MCPB signing identity, a human artifact-baseline receipt,
 tag-scoped protected-environment approval, and an externally signed MCPB
 handoff verified byte for byte against the reviewed unsigned candidate.
 
-## Quick start
-
-Requirements: Node.js 22 or 24, npm, a self-hosted n8n Community Edition
-instance, and an n8n Public API key with only the permissions you need.
-
-First identify a version whose npm provenance and GitHub release assets you have
-verified, then replace `<VERIFIED_VERSION>` below. Keep the pin exact:
-
-```json
-{
-  "mcpServers": {
-    "n8n-community": {
-      "command": "npx",
-      "args": ["--yes", "n8n-mcp-community@<VERIFIED_VERSION>"],
-      "env": {
-        "N8N_API_URL": "https://n8n.example.com",
-        "N8N_API_KEY": "replace-with-a-dedicated-api-key",
-        "N8N_MCP_MODE": "read-only"
-      }
-    }
-  }
-}
-```
-
-`read-only` is the recommended starting point, not a capability ceiling: the
-same 44-tool surface includes full workflow authoring. Set
-`N8N_MCP_MODE=write` to create and edit workflows, nodes, credentials, and
-tags, or `N8N_MCP_MODE=unsafe` to enable every tool — activation, deletion,
-retries, and the other destructive operations, each still guarded by an exact
-per-call confirmation phrase. See [Safety modes](#safety-modes).
-
-Restart the MCP client and confirm exactly 44 tools, 5 resources, and 4
-prompts. Compatible desktop clients can instead install the signed MCPB from
-the [latest verified release](https://github.com/drzamarian/n8n-mcp-community/releases/latest);
-verify its checksum against the release `SHA256SUMS` first.
-
-## Quick start from source
-
-Requirements: Node.js 22 or 24, npm, and a Git checkout of this repository.
-
-```bash
-npm ci
-npm run verify:contributor
-```
-
-Configure your MCP client to run the compiled stdio entry point:
-
-```json
-{
-  "mcpServers": {
-    "n8n-community": {
-      "command": "node",
-      "args": ["/absolute/path/to/n8n-mcp-community/dist/index.js"],
-      "env": {
-        "N8N_API_URL": "https://n8n.example.com",
-        "N8N_API_KEY": "replace-with-your-api-key",
-        "N8N_MCP_MODE": "read-only"
-      }
-    }
-  }
-}
-```
-
-Restart the MCP client and list tools. The server can initialize and expose its
-inventory without n8n credentials; connected tools validate the URL and API key
-only when called.
-
-Verified releases provide both a signed MCPB for compatible clients and
-exact-version `npx` configuration for portability. `@latest`, global installs,
-and `curl | shell` are not reproducible defaults. See
-[Installation](docs/installation.md) for the release policy and client-specific
-guidance.
+</details>
 
 ## Safety modes
 
-| Mode      | What it allows                                                    | Required configuration                                     |
-| --------- | ----------------------------------------------------------------- | ---------------------------------------------------------- |
-| Read-only | Read-only tools only                                              | Default, or `N8N_MCP_MODE=read-only`                       |
-| Write     | Read-only and mutation tools without the unsafe confirmation gate | `N8N_MCP_MODE=write`                                       |
-| Unsafe    | All tools                                                         | `N8N_MCP_MODE=unsafe` plus the exact per-call confirmation |
+| Mode      | What it allows                                                  | Required configuration               |
+| --------- | --------------------------------------------------------------- | ------------------------------------ |
+| Read-only | Read-only tools only                                            | Default, or `N8N_MCP_MODE=read-only` |
+| Write     | Read-only and ordinary mutation tools                           | `N8N_MCP_MODE=write`                 |
+| Unsafe    | All tools, including destructive or external-contact operations | `N8N_MCP_MODE=unsafe`                |
 
-Unsafe mode is necessary but not sufficient. Every unsafe call also requires a
-confirmation such as `DELETE wf_123`, `STOP exec_123`, or `TEST cred_123`.
-The n8n API key remains the final upstream permission boundary.
+Selecting unsafe mode is the complete server-side authorization gate for unsafe
+tools. MCP safety annotations remain accurate so compatible clients can apply
+their native approval UX, and the n8n API key remains the final upstream
+permission boundary.
 
 Plain HTTP is accepted automatically only for loopback URLs. A non-loopback
 HTTP instance additionally requires `N8N_ALLOW_INSECURE_HTTP=1`, which accepts
@@ -173,14 +158,14 @@ failure, and security reference.
 | [`n8n_workflows_create`](docs/tools.md#n8n_workflows_create)           | Write     | Create a validated workflow through the Public API.                    |
 | [`n8n_workflows_update`](docs/tools.md#n8n_workflows_update)           | Write     | Guard and update selected fields while preserving omitted fields.      |
 | [`n8n_update_node`](docs/tools.md#n8n_update_node)                     | Write     | Change one validated node property with non-atomic concurrency guards. |
-| [`n8n_workflows_delete`](docs/tools.md#n8n_workflows_delete)           | Unsafe    | Permanently delete one workflow after exact confirmation.              |
-| [`n8n_workflows_activate`](docs/tools.md#n8n_workflows_activate)       | Unsafe    | Activate one workflow after exact confirmation.                        |
-| [`n8n_workflows_deactivate`](docs/tools.md#n8n_workflows_deactivate)   | Unsafe    | Deactivate one workflow after exact confirmation.                      |
+| [`n8n_workflows_delete`](docs/tools.md#n8n_workflows_delete)           | Unsafe    | Permanently delete one workflow.                                       |
+| [`n8n_workflows_activate`](docs/tools.md#n8n_workflows_activate)       | Unsafe    | Activate one workflow.                                                 |
+| [`n8n_workflows_deactivate`](docs/tools.md#n8n_workflows_deactivate)   | Unsafe    | Deactivate one workflow.                                               |
 | [`n8n_workflows_get_version`](docs/tools.md#n8n_workflows_get_version) | Read-only | Retrieve one retained historical workflow version.                     |
 | [`n8n_workflows_get_tags`](docs/tools.md#n8n_workflows_get_tags)       | Read-only | List tags assigned to a workflow.                                      |
 | [`n8n_workflows_update_tags`](docs/tools.md#n8n_workflows_update_tags) | Write     | Replace a workflow's complete tag assignment.                          |
-| [`n8n_workflows_archive`](docs/tools.md#n8n_workflows_archive)         | Unsafe    | Archive one workflow after exact confirmation.                         |
-| [`n8n_workflows_unarchive`](docs/tools.md#n8n_workflows_unarchive)     | Unsafe    | Restore one archived workflow after exact confirmation.                |
+| [`n8n_workflows_archive`](docs/tools.md#n8n_workflows_archive)         | Unsafe    | Archive one workflow.                                                  |
+| [`n8n_workflows_unarchive`](docs/tools.md#n8n_workflows_unarchive)     | Unsafe    | Restore one archived workflow.                                         |
 | [`n8n_workflows_diff`](docs/tools.md#n8n_workflows_diff)               | Read-only | Compare nodes and connections without returning raw values.            |
 
 ### Executions
@@ -222,7 +207,7 @@ failure, and security reference.
 | ---------------------------------------------------- | --------- | ----------------------------------------------------------------- |
 | [`n8n_users_list`](docs/tools.md#n8n_users_list)     | Read-only | List users visible to the API key.                                |
 | [`n8n_users_get`](docs/tools.md#n8n_users_get)       | Read-only | Read one user by stable ID or exact email.                        |
-| [`n8n_users_create`](docs/tools.md#n8n_users_create) | Unsafe    | Invite a member or admin after exact email confirmation.          |
+| [`n8n_users_create`](docs/tools.md#n8n_users_create) | Unsafe    | Invite a member or admin.                                         |
 | [`n8n_users_delete`](docs/tools.md#n8n_users_delete) | Unsafe    | Delete one API-eligible user without unsupported transfer claims. |
 
 ### Diagnostics and instance metadata
@@ -231,7 +216,7 @@ failure, and security reference.
 | -------------------------------------------------------------------------- | --------- | ------------------------------------------------------------------- |
 | [`n8n_health`](docs/tools.md#n8n_health)                                   | Read-only | Perform a bounded same-origin health check.                         |
 | [`n8n_insights_summary`](docs/tools.md#n8n_insights_summary)               | Read-only | Read the official insights summary with optional date filters.      |
-| [`n8n_audit_generate`](docs/tools.md#n8n_audit_generate)                   | Unsafe    | Generate n8n's instance security audit after exact confirmation.    |
+| [`n8n_audit_generate`](docs/tools.md#n8n_audit_generate)                   | Unsafe    | Generate n8n's instance security audit.                             |
 | [`n8n_search_workflows`](docs/tools.md#n8n_search_workflows)               | Read-only | Search one workflow page locally by name, node type, or tag.        |
 | [`n8n_get_node_docs`](docs/tools.md#n8n_get_node_docs)                     | Read-only | Read one of four immutable offline core-node references.            |
 | [`n8n_list_node_types`](docs/tools.md#n8n_list_node_types)                 | Read-only | Inventory node types observed in bounded accessible workflow pages. |
@@ -306,7 +291,7 @@ API. The project does not redistribute the `n8n-nodes-base` catalog and does not
 use browser cookies, interactive session routes, or runtime package downloads to
 construct one.
 
-The v0.1.4 candidate surface intentionally excludes arbitrary workflow execution,
+The v0.2.0 candidate surface intentionally excludes arbitrary workflow execution,
 credential/workflow transfer, folders, data tables, beta evaluation endpoints,
 and execution annotations. See the [roadmap](ROADMAP.md) for the annotation
 proposal retained outside the release target.

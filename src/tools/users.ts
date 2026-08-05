@@ -1,14 +1,7 @@
 import { z } from "zod";
 import { defineTool, type ToolDefinition } from "./definition.js";
 import { booleanQuery, numberQuery } from "./common.js";
-import {
-  confirmation,
-  cursor,
-  encodePathSegment,
-  identifier,
-  pageLimit,
-  pathSegment,
-} from "./schemas.js";
+import { cursor, encodePathSegment, identifier, pageLimit, pathSegment } from "./schemas.js";
 
 const email = z.string().email().max(254).describe("Exact valid email address of the user.");
 const userLookup = z
@@ -109,7 +102,7 @@ export const userTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_users_create",
     title: "Invite user",
     description:
-      "Create a pending non-owner invitation as an additive write that may send email. Use n8n_users_get first when the address may exist; this is not an update or project-membership tool. role defaults to global:member, and confirmation must bind INVITE to the exact email. Requires unsafe mode plus invite permission. An inconclusive response may still mean a pending user exists; returns delivery state but never the acceptance URL.",
+      "Create a pending non-owner invitation as an additive write that may send email. Use n8n_users_get first when the address may exist; this is not an update or project-membership tool. role defaults to global:member. Requires unsafe mode plus invite permission. An inconclusive response may still mean a pending user exists; returns delivery state but never the acceptance URL.",
     operation: "unsafe",
     outputDataDescription:
       "Confirmed invitation outcome with userCreated, invited, userId, email, requestedRole, roleConfirmedByResponse, emailSent, delivery, and inviteAcceptUrlReturned=false. Acceptance URLs are never returned.",
@@ -120,9 +113,7 @@ export const userTools: readonly ToolDefinition[] = Object.freeze([
         .enum(["global:member", "global:admin"])
         .default("global:member")
         .describe("Global role to request for the invited user (default global:member)."),
-      confirmation,
     },
-    confirmation: (input) => ({ supplied: input.confirmation, expected: `INVITE ${input.email}` }),
     handler: async (input, context) => {
       const response = invitationResponseSchema.parse(
         await context.client().request({
@@ -164,12 +155,11 @@ export const userTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_users_delete",
     title: "Delete user",
     description:
-      "Permanently delete one API-eligible user. Use n8n_users_get to verify the target first; use read tools for inspection. userId accepts no transfer target, so ownership handling remains entirely with n8n, and confirmation must bind DELETE to that ID. Requires unsafe mode plus user-delete permission and exact confirmation; returns the request-bound ID with deleted=true and provides no rollback claim.",
+      "Permanently delete one API-eligible user. Use n8n_users_get to verify the target first; use read tools for inspection. userId accepts no transfer target, so ownership handling remains entirely with n8n. Requires unsafe mode plus user-delete permission; returns the request-bound ID with deleted=true and provides no rollback claim.",
     operation: "unsafe",
     outputDataDescription:
       "Object with the validated input userId and deleted=true. The tool makes no ownership-transfer claim and accepts n8n's successful empty response.",
-    input: { userId: identifier("Stable ID of the API-eligible user to delete."), confirmation },
-    confirmation: (input) => ({ supplied: input.confirmation, expected: `DELETE ${input.userId}` }),
+    input: { userId: identifier("Stable ID of the API-eligible user to delete.") },
     handler: async (input, context) => {
       await context.client().request({
         method: "DELETE",

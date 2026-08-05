@@ -128,23 +128,24 @@ const DESCRIPTION_PARAMETER_SEMANTICS: Readonly<Record<ToolName, RegExp>> = {
   n8n_workflows_update:
     /expectedVersionId must match both pre-write reads.*supplied nodes .* replace/i,
   n8n_update_node: /path selects the mutable root whose contract validates value/i,
-  n8n_workflows_delete: /confirmation must bind DELETE to the same workflowId.*no rollback/i,
-  n8n_workflows_activate: /does not execute it immediately.*confirmation must bind ACTIVATE/i,
-  n8n_workflows_deactivate: /without .* stopping executions already running.*bind DEACTIVATE/i,
+  n8n_workflows_delete: /no rollback or transfer/i,
+  n8n_workflows_activate:
+    /production triggers can accept future events.*does not execute it immediately/i,
+  n8n_workflows_deactivate: /without deleting saved data or stopping executions already running/i,
   n8n_workflows_get_version: /Both returned IDs must match the selectors.*ambiguous 404/i,
   n8n_workflows_get_tags: /endpoint has no cursor.*at most 100.*exact omissions/i,
   n8n_workflows_update_tags: /tagIds is the entire desired set.*empty array clears all tags/i,
-  n8n_workflows_archive: /bind ARCHIVE to workflowId.*availability change can disrupt callers/i,
-  n8n_workflows_unarchive: /without activating its triggers.*bind UNARCHIVE to workflowId/i,
+  n8n_workflows_archive: /availability change can disrupt callers/i,
+  n8n_workflows_unarchive: /without activating its triggers.*active state is not inferred/i,
   n8n_workflows_diff: /Omitting toVersionId selects current.*ignoreLayout=true suppresses/i,
   n8n_executions_list: /status and workflowId filter upstream.*includeData only reports/i,
   n8n_executions_get: /includeData changes only.*never returns node inputs or outputs/i,
-  n8n_executions_delete: /bind DELETE to the same executionId.*no recovery or rollback/i,
+  n8n_executions_delete: /no recovery or rollback/i,
   n8n_executions_retry:
     /loadWorkflow=true uses the currently saved workflow.*false uses the original execution snapshot/i,
   n8n_executions_stop: /successful HTTP response alone does not prove cancellation/i,
   n8n_credentials_create: /type selects the schema .* isResolvable is sent only when supplied/i,
-  n8n_credentials_delete: /usage across all pages first.*bind DELETE to credentialId/i,
+  n8n_credentials_delete: /usage across all pages first.*no secret or rollback/i,
   n8n_credentials_schema: /credentialType is a route selector, not a stored credential ID/i,
   n8n_credentials_list:
     /cursor resumes a prior page.*limit bounds that single request.*never auto-paginates/i,
@@ -152,7 +153,7 @@ const DESCRIPTION_PARAMETER_SEMANTICS: Readonly<Record<ToolName, RegExp>> = {
   n8n_credentials_update:
     /isPartialData=false treats data as replacement.*true requests a partial merge/i,
   n8n_credentials_test:
-    /external service, which receives and may log the attempt.*bind TEST to credentialId/i,
+    /external service, which receives and may log the attempt.*network contact is unwanted/i,
   n8n_credentials_usage:
     /active filters upstream.*unresolved legacy references.*nextCursor is null/i,
   n8n_tags_list: /cursor resumes the prior page.*continue nextCursor until null/i,
@@ -160,13 +161,13 @@ const DESCRIPTION_PARAMETER_SEMANTICS: Readonly<Record<ToolName, RegExp>> = {
   n8n_tags_create:
     /name must already be trimmed.*duplicate-name handling.*never changes any workflow assignment/i,
   n8n_tags_update: /tagId selects the existing record and name is its complete replacement/i,
-  n8n_tags_delete: /remove that label from multiple workflows.*bind DELETE to tagId.*no rollback/i,
+  n8n_tags_delete: /remove that label from multiple workflows.*no rollback/i,
   n8n_users_list: /includeRole=true only asks n8n for roles.*cursor resumes.*never auto-paginates/i,
   n8n_users_get:
     /userIdOrEmail chooses ID lookup or an exact percent-encoded email lookup.*cannot guarantee role visibility/i,
-  n8n_users_create:
-    /role defaults to global:member.*bind INVITE to the exact email.*pending user exists/i,
-  n8n_users_delete: /userId accepts no transfer target.*bind DELETE to that ID/i,
+  n8n_users_create: /role defaults to global:member.*pending user exists/i,
+  n8n_users_delete:
+    /userId accepts no transfer target.*ownership handling remains entirely with n8n/i,
   n8n_health:
     /one redirect-free same-origin .* 10-second timeout.*requires configured URL\/key values/i,
   n8n_insights_summary:
@@ -222,7 +223,7 @@ function toolDefinitionMatrixViolations(
 }
 
 const APPROVED_TOOL_METADATA_SHA256 =
-  "ac506ebd6f7c65ea060093cd84d2dbab74590b8e2a3e0789966b39ebfbbcd9a0";
+  "71b0e4ae040d27e9f15e842ad2552b5523fdd1443f6cd301c1873341389c9652";
 
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
@@ -657,29 +658,30 @@ test("every published tool schema is fully inline, with no $ref, for clients wit
   }
 });
 
-test("every confirming tool documents its exact confirmation phrase, derived without drift", async () => {
+test("unsafe mode is the sole server-side gate and publishes no confirmation input", async () => {
   const { client, server } = await connectedClient();
   try {
     const listed = await client.listTools();
-    let confirmingTools = 0;
-    for (const definition of TOOL_DEFINITIONS) {
-      if (definition.confirmationPhrase === undefined) continue;
-      confirmingTools += 1;
+    const unsafeDefinitions = TOOL_DEFINITIONS.filter(
+      (definition) => definition.operation === "unsafe",
+    );
+    assert.equal(unsafeDefinitions.length, 14, "expected exactly 14 unsafe tools");
+    for (const definition of unsafeDefinitions) {
       const tool = listed.tools.find((candidate) => candidate.name === definition.name);
       assert(tool, `Missing listed tool ${definition.name}`);
-      const field = (
-        tool.inputSchema.properties as Record<string, { description?: string }> | undefined
-      )?.confirmation;
-      assert(field?.description, `${definition.name} confirmation field lacks a description`);
-      // Discoverable: the exact required phrase template is present in the schema the client sees.
-      assert(
-        field.description.includes(definition.confirmationPhrase),
-        `${definition.name} confirmation description "${field.description}" omits phrase "${definition.confirmationPhrase}"`,
+      const properties = tool.inputSchema.properties as Record<string, unknown> | undefined;
+      assert.equal(
+        Object.hasOwn(properties ?? {}, "confirmation"),
+        false,
+        `${definition.name} still publishes a redundant confirmation input`,
       );
-      // Never a trivial retry: the guard promises not to echo the phrase back on mismatch.
-      assert.match(field.description, /without echoing the expected phrase/);
+      assert.equal(
+        (tool.inputSchema.required as readonly string[] | undefined)?.includes("confirmation") ??
+          false,
+        false,
+        `${definition.name} still requires a redundant confirmation input`,
+      );
     }
-    assert.equal(confirmingTools, 14, "expected exactly 14 confirmation-guarded tools");
   } finally {
     await client.close();
     await server.close();

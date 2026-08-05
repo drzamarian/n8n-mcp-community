@@ -14,28 +14,26 @@ and contract-test inventories are checked together.
 
 ## What is the easiest installation method?
 
-For a compatible desktop client, the signed MCPB from the latest externally
-verified GitHub release is the easiest. Exact-version `npx` is the portable
-alternative after npm provenance and the GitHub release agree. A source checkout
-remains the contributor path.
+For a terminal install, run
+`npm install --global n8n-mcp-community@latest`. For Claude Desktop, install the
+`.mcpb` file from the latest GitHub release. Use `npx` if you do not want a
+global install.
 
 ## Will I need both MCPB and npx?
 
-No. They are two installation routes for the same reviewed stdio runtime. Choose
-MCPB for a verified compatible client's one-click flow or exact-version `npx`
-for portable configuration.
+No. Choose one: MCPB for Claude Desktop, global npm for a saved command, or
+`npx` for no global install. Use `@latest` unless you need an exact version for
+an audit or rollback.
 
 ## Can Homebrew update the MCPB?
 
-No. An MCPB is not a Homebrew formula. No Homebrew formula is planned for
-this project; bundle updates use explicit signed releases or a compatible
-client's verified update flow.
+No. They are different install methods. A planned Homebrew formula will install
+and update the CLI. It will not update MCPB files.
 
-## Why do the npx examples avoid `@latest`?
+## Can I pin an exact npm version?
 
-An exact package version makes the installed code reviewable, upgrades
-deliberate, and rollback deterministic. `@latest` can change the runtime without
-changing the client configuration.
+Yes. Use `@latest` by default. Use an exact version for an audit, bug replay, or
+rollback.
 
 ## Does Introspect call a workflow, an agent, or an AI model?
 

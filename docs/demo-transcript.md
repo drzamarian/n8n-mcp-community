@@ -1,32 +1,49 @@
-# Synthetic demo transcript
+# Demo transcript
 
-This transcript accompanies the animated README demo. It contains no real n8n
-host, API key, workflow identifier, or workflow data. The visual compresses a
-standards-based MCP client interaction into a short terminal-style sequence; it
-does not claim that the client narration is a project CLI command.
+The README GIF uses fake names and fake data. It shows three steps.
+
+## 1. Install
 
 ```text
-$ npx --yes n8n-mcp-community@0.1.4 --version
-0.1.4
-
-MCP client initialized n8n-community
-44 tools | 5 resources | 4 prompts
-mode: read-only | external AI: none
-
-MCP client -> n8n_introspect
-{"workflowId":"wf_synthetic_1","profile":"quick"}
-
-schema 1.0.0 | engine 2.0.0 | status: complete
-findings: 0 critical | 0 high | 0 medium | 0 low | 0 info
+$ npm install --global n8n-mcp-community@latest
 ```
 
-The version command depicts the v0.1.4 source candidate and becomes an
-installation route only after external npm, GitHub, and Registry readback agree.
-The initialization and tool call lines represent MCP protocol
-events, not shell commands. The Introspect output is the documented empty
-finding example: the real direct structured result also includes coverage, rule
-outcomes, and limitations. Its fields remain untrusted n8n-derived diagnostics
-and pass through the shared sanitizer before emission, as described in the
+When npm finishes, add the server command to your client. Update later with the
+same install command.
+
+## 2. Connect
+
+```text
+command: "n8n-mcp-community"
+mode:    "read-only"
+
+✓ 44 tools · 5 resources · 4 prompts
+```
+
+## 3. Inspect
+
+```text
+Ask your AI client:
+“Check workflow wf_demo for hidden risks.”
+
+Running n8n_introspect
+workflow: wf_demo
+profile:  quick
+
+✓ 23 deterministic rules
+0 workflow runs · 0 external AI calls
+
+MEDIUM · Retry may repeat an HTTP side effect
+A POST request retries without an idempotency key.
+The same external action may happen twice.
+
+Add an idempotency key or turn off retry.
+```
+
+The finding matches the tool's real `NODE_RETRY_SIDE_EFFECT` rule. Introspect
+does not run the workflow or call an AI service. Tool results still pass through
+your MCP client, so review that client's data policy. The full result also
+includes coverage, rule outcomes, and limits. See the
 [tool reference](tools.md#n8n_introspect).
 
 [Back to the documentation map](README.md)

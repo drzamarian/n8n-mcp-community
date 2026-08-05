@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "packageVersion": "0.1.4",
+  "packageVersion": "0.2.0",
   "npm": {
-    "sha256": "ce4398f1b37361bbfb57745344d64c078c916e33828e96c02f521db7d0d9fda1",
-    "fileCount": 61,
+    "sha256": "b05f4a203d55ebe6837b3ea45215fcaf72feeeb0134a2f4f17e11dbcae7ab23d",
+    "fileCount": 60,
     "files": [
       "CHANGELOG.md",
       "CODE_OF_CONDUCT.md",
@@ -51,7 +51,6 @@
       "dist/version.js",
       "docs/README.md",
       "docs/architecture.md",
-      "docs/assets/demo.gif",
       "docs/clients.md",
       "docs/compatibility.md",
       "docs/configuration.md",
@@ -69,7 +68,7 @@
     ]
   },
   "mcpb": {
-    "sha256": "e54753f696baede4164af546481692b37a36903670cfc14ac701e6015bd84405",
+    "sha256": "db0417650df78f5e1dc26ba8c106f44402a30a5d831a68989db2dc7500a0ae7c",
     "totalFileCount": 2173,
     "dependencyFileCount": 2134,
     "runtimeFiles": [
@@ -152,7 +151,7 @@
     ]
   },
   "release": {
-    "serverJsonSha256": "13ce1d4b305b335169460be0b45eaeb7150d2319314bd95cf37eb9ee8c5d363c",
-    "sbomCanonicalSha256": "bb915119a4ecac7ef161ff7ede6896f8f5f0416db19719d63ff344d56caab1c8"
+    "serverJsonSha256": "6aa54936f9105940a58c4d553e6bd154510895776798a805870109e679dfb844",
+    "sbomCanonicalSha256": "8dd3d718cf725525daf82196c60eaabaa78b12dabd3f1aaca92593247f510d0d"
   }
 }

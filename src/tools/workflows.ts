@@ -9,7 +9,6 @@ import { defineTool, type ToolDefinition } from "./definition.js";
 import {
   assertBoundedDepth,
   assertSafeJson,
-  confirmation,
   cursor,
   identifier,
   isRecord,
@@ -1138,15 +1137,11 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_workflows_delete",
     title: "Delete workflow",
     description:
-      "Permanently delete one workflow and its saved definition. Use n8n_workflows_archive when reversible removal is sufficient and n8n_workflows_get for inspection. confirmation must bind DELETE to the same workflowId; no rollback or transfer is provided. Requires unsafe mode plus delete permission and exact confirmation; returns the request-bound ID with deleted=true.",
+      "Permanently delete one workflow and its saved definition. Use n8n_workflows_archive when reversible removal is sufficient and n8n_workflows_get for inspection. This action has no rollback or transfer. Requires unsafe mode plus delete permission; returns the request-bound ID with deleted=true.",
     operation: "unsafe",
     outputDataDescription:
       "Object with the validated input workflowId and deleted=true. Identity is bound to the request and does not rely on an upstream response body.",
-    input: { workflowId: identifier("Stable ID of the workflow to delete."), confirmation },
-    confirmation: (input) => ({
-      supplied: input.confirmation,
-      expected: `DELETE ${input.workflowId}`,
-    }),
+    input: { workflowId: identifier("Stable ID of the workflow to delete.") },
     handler: async (input, context) => {
       await context
         .client()
@@ -1160,8 +1155,8 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
       title: `${action === "activate" ? "Activate" : "Deactivate"} workflow`,
       description:
         action === "activate"
-          ? "Activate one workflow so production triggers can accept future events; this does not execute it immediately. Use it only after n8n_workflows_get review; use n8n_workflows_deactivate to stop future triggers. confirmation must bind ACTIVATE to workflowId. Requires unsafe mode plus activation permission and exact confirmation; returns target-validated active state metadata."
-          : "Deactivate one workflow's future production triggers without deleting saved data or stopping executions already running. Use n8n_workflows_activate to reverse this state or n8n_workflows_archive for lifecycle removal. confirmation must bind DEACTIVATE to workflowId. Requires unsafe mode plus deactivation permission and exact confirmation; returns target-validated inactive state metadata.",
+          ? "Activate one workflow so production triggers can accept future events; this does not execute it immediately. Use it only after n8n_workflows_get review; use n8n_workflows_deactivate to stop future triggers. Requires unsafe mode plus activation permission; returns target-validated active state metadata."
+          : "Deactivate one workflow's future production triggers without deleting saved data or stopping executions already running. Use n8n_workflows_activate to reverse this state or n8n_workflows_archive for lifecycle removal. Requires unsafe mode plus deactivation permission; returns target-validated inactive state metadata.",
       operation: "unsafe",
       outputDataDescription:
         action === "activate"
@@ -1171,12 +1166,7 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
         workflowId: identifier(
           `Stable ID of the workflow to ${action === "activate" ? "activate" : "deactivate"}.`,
         ),
-        confirmation,
       },
-      confirmation: (input) => ({
-        supplied: input.confirmation,
-        expected: `${action.toUpperCase()} ${input.workflowId}`,
-      }),
       handler: async (input, context) =>
         parseWorkflowLifecycleMetadata(
           await context.client().request({
@@ -1267,8 +1257,8 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
       title: `${action === "archive" ? "Archive" : "Unarchive"} workflow`,
       description:
         action === "archive"
-          ? "Archive one workflow without deleting its saved definition. Use it instead of n8n_workflows_delete for reversible lifecycle removal; use n8n_workflows_deactivate only to stop triggers. confirmation must bind ARCHIVE to workflowId, and the availability change can disrupt callers. Requires unsafe mode plus archive permission and exact confirmation; returns target-validated archive state."
-          : "Restore one archived workflow without activating its triggers. Use it to reverse n8n_workflows_archive; call n8n_workflows_activate separately only if triggers should resume. confirmation must bind UNARCHIVE to workflowId; current active state is not inferred. Requires unsafe mode plus unarchive permission and exact confirmation; returns target-validated archive state.",
+          ? "Archive one workflow without deleting its saved definition. Use it instead of n8n_workflows_delete for reversible lifecycle removal; use n8n_workflows_deactivate only to stop triggers. The availability change can disrupt callers. Requires unsafe mode plus archive permission; returns target-validated archive state."
+          : "Restore one archived workflow without activating its triggers. Use it to reverse n8n_workflows_archive; call n8n_workflows_activate separately only if triggers should resume. Current active state is not inferred. Requires unsafe mode plus unarchive permission; returns target-validated archive state.",
       operation: "unsafe",
       outputDataDescription:
         action === "archive"
@@ -1278,12 +1268,7 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
         workflowId: identifier(
           `Stable ID of the workflow to ${action === "archive" ? "archive" : "restore from archive"}.`,
         ),
-        confirmation,
       },
-      confirmation: (input) => ({
-        supplied: input.confirmation,
-        expected: `${action.toUpperCase()} ${input.workflowId}`,
-      }),
       handler: async (input, context) =>
         parseWorkflowLifecycleMetadata(
           await context.client().request({

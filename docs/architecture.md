@@ -10,7 +10,7 @@ browser session, or runtime plugin download.
 ```text
 MCP client
   -> strict tool input schema
-  -> operation-mode and exact-confirmation policy
+  -> operation-mode policy
   -> bounded tool handler
   -> same-origin n8n Public API client
   -> response schema or allowlisted projection
@@ -58,7 +58,6 @@ Every tool definition owns:
   semantics that apply to that tool;
 - MCP annotations derived from the operation class with an explicit per-tool
   override and a conservative destructive default for every mutation;
-- an optional exact-confirmation function for unsafe operations;
 - a bounded handler that validates untrusted upstream structures.
 
 The shared factory turns generic success into

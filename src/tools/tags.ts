@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { defineTool, type ToolDefinition } from "./definition.js";
 import { numberQuery } from "./common.js";
-import { confirmation, cursor, identifier, pageLimit, pathSegment, tagName } from "./schemas.js";
+import { cursor, identifier, pageLimit, pathSegment, tagName } from "./schemas.js";
 
 const tagSchema = z
   .object({
@@ -89,12 +89,11 @@ export const tagTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_tags_delete",
     title: "Delete tag",
     description:
-      "Permanently delete one workflow tag, which can remove that label from multiple workflows. Use n8n_tags_get plus affected-workflow review first; use n8n_tags_update when a rename is sufficient. confirmation must bind DELETE to tagId, and no rollback is provided. Requires unsafe mode plus tag-delete permission and exact confirmation; returns the request-bound ID with deleted=true.",
+      "Permanently delete one workflow tag, which can remove that label from multiple workflows. Use n8n_tags_get plus affected-workflow review first; use n8n_tags_update when a rename is sufficient. No rollback is provided. Requires unsafe mode plus tag-delete permission; returns the request-bound ID with deleted=true.",
     operation: "unsafe",
     outputDataDescription:
       "Object with the validated input tagId and deleted=true. Identity is bound to the request and does not rely on an upstream response body.",
-    input: { tagId: identifier("Stable ID of the workflow tag to delete."), confirmation },
-    confirmation: (input) => ({ supplied: input.confirmation, expected: `DELETE ${input.tagId}` }),
+    input: { tagId: identifier("Stable ID of the workflow tag to delete.") },
     handler: async (input, context) => {
       await context
         .client()

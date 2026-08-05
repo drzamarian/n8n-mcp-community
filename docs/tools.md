@@ -7,7 +7,8 @@ result envelope in abbreviated form.
 ## Shared conventions
 
 - **Modes:** read-only tools work in every mode; write tools require `write` or
-  `unsafe`; unsafe tools require `unsafe` plus the exact documented confirmation.
+  `unsafe`; unsafe tools require `unsafe`, which is their complete server-side
+  authorization gate.
 - **Annotations:** `RO` is `readOnlyHint`, `D` is `destructiveHint`, `I` is
   `idempotentHint`, and `OW` is `openWorldHint`.
 - **Identifiers:** unless noted otherwise, IDs contain 1–128 ASCII letters,
@@ -176,16 +177,14 @@ Permanently deletes one workflow.
 
 - **Policy and endpoint:** unsafe; `DELETE /workflows/{workflowId}`;
   `RO=false, D=true, I=false, OW=true`.
-- **Requirements:** Requires mode `unsafe`, exact target-bound confirmation, and API-key permission to delete the workflow.
+- **Requirements:** Requires mode `unsafe` and API-key permission to delete the workflow.
 - **Community Edition:** Verified on Community 2.30.5 and 2.30.7. No transfer or recovery capability is implied after deletion.
-- **Inputs:** required `workflowId` and `confirmation`, which must exactly equal
-  `DELETE <workflowId>`.
+- **Inputs:** required `workflowId`.
 - **Returns:** the input-bound workflow ID and `deleted: true`; it does not trust
   an upstream response body to establish identity.
-- **Failures and privacy:** any mode other than `unsafe`, any confirmation
-  mismatch, or malformed ID produces zero requests. Deletion is irreversible
-  through this server.
-- **Example:** `{ "workflowId": "wf_1", "confirmation": "DELETE wf_1" }` →
+- **Failures and privacy:** any mode other than `unsafe` or malformed ID
+  produces zero requests. Deletion is irreversible through this server.
+- **Example:** `{ "workflowId": "wf_1" }` →
   `{ "data": { "workflowId": "wf_1", "deleted": true }, "redacted": false, "untrusted": true }`.
 
 ## n8n_workflows_activate
@@ -194,17 +193,16 @@ Activates one workflow so its production triggers may begin receiving events.
 
 - **Policy and endpoint:** unsafe; `POST /workflows/{workflowId}/activate`;
   `RO=false, D=true, I=false, OW=true`.
-- **Requirements:** Requires mode `unsafe`, exact target-bound confirmation, and API-key permission to activate the workflow.
+- **Requirements:** Requires mode `unsafe` and API-key permission to activate the workflow.
 - **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Activation can enable real triggers; the server does not execute workflows directly.
-- **Inputs:** required `workflowId`; `confirmation` must equal
-  `ACTIVATE <workflowId>`.
+- **Inputs:** required `workflowId`.
 - **Returns:** target-bound workflow metadata with required `id` and
   `active: true`; optional name, type, archive state, version, and timestamps
   are included only when supplied by n8n.
-- **Failures and privacy:** denied mode/confirmation issues zero requests.
+- **Failures and privacy:** a denied mode issues zero requests.
   Activation can cause external side effects later when triggers fire; review
   credentials, trigger exposure, and workflow behavior first.
-- **Example:** `{ "workflowId": "wf_1", "confirmation": "ACTIVATE wf_1" }` →
+- **Example:** `{ "workflowId": "wf_1" }` →
   `{ "data": { "id": "wf_1", "active": true }, "redacted": false, "untrusted": true }`.
 
 ## n8n_workflows_deactivate
@@ -213,17 +211,16 @@ Deactivates one workflow's production triggers.
 
 - **Policy and endpoint:** unsafe; `POST /workflows/{workflowId}/deactivate`;
   `RO=false, D=true, I=false, OW=true`.
-- **Requirements:** Requires mode `unsafe`, exact target-bound confirmation, and API-key permission to deactivate the workflow.
+- **Requirements:** Requires mode `unsafe` and API-key permission to deactivate the workflow.
 - **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Deactivation does not cancel work already running.
-- **Inputs:** required `workflowId`; `confirmation` must equal
-  `DEACTIVATE <workflowId>`.
+- **Inputs:** required `workflowId`.
 - **Returns:** target-bound workflow metadata with required `id` and
   `active: false`; optional name, type, archive state, version, and timestamps
   are included only when supplied by n8n.
-- **Failures and privacy:** denied mode/confirmation issues zero requests.
+- **Failures and privacy:** a denied mode issues zero requests.
   Deactivation does not delete saved workflow or execution data and may not stop
   work that is already running.
-- **Example:** `{ "workflowId": "wf_1", "confirmation": "DEACTIVATE wf_1" }` →
+- **Example:** `{ "workflowId": "wf_1" }` →
   `{ "data": { "id": "wf_1", "active": false }, "redacted": false, "untrusted": true }`.
 
 ## n8n_workflows_get_version
@@ -289,17 +286,16 @@ Archives one workflow without deleting it.
 
 - **Policy and endpoint:** unsafe; `POST /workflows/{workflowId}/archive`;
   `RO=false, D=true, I=false, OW=true`.
-- **Requirements:** Requires mode `unsafe`, exact target-bound confirmation, and API-key permission to archive the workflow.
+- **Requirements:** Requires mode `unsafe` and API-key permission to archive the workflow.
 - **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Archive support is independent of paid project transfer features.
-- **Inputs:** required `workflowId`; `confirmation` must equal
-  `ARCHIVE <workflowId>`.
+- **Inputs:** required `workflowId`.
 - **Returns:** target-bound workflow metadata with required `id` and
   `isArchived: true`; optional name, type, active state, version, and
   timestamps are included only when supplied by n8n.
-- **Failures and privacy:** denied mode/confirmation issues zero requests.
+- **Failures and privacy:** a denied mode issues zero requests.
   Archiving changes workflow availability and should be treated as a disruptive
   lifecycle operation even though it is reversible.
-- **Example:** `{ "workflowId": "wf_1", "confirmation": "ARCHIVE wf_1" }` →
+- **Example:** `{ "workflowId": "wf_1" }` →
   `{ "data": { "id": "wf_1", "isArchived": true }, "redacted": false, "untrusted": true }`.
 
 ## n8n_workflows_unarchive
@@ -308,17 +304,16 @@ Restores one archived workflow.
 
 - **Policy and endpoint:** unsafe; `POST /workflows/{workflowId}/unarchive`;
   `RO=false, D=true, I=false, OW=true`.
-- **Requirements:** Requires mode `unsafe`, exact target-bound confirmation, and API-key permission to unarchive the workflow.
+- **Requirements:** Requires mode `unsafe` and API-key permission to unarchive the workflow.
 - **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Restoring archive state does not activate the workflow.
-- **Inputs:** required `workflowId`; `confirmation` must equal
-  `UNARCHIVE <workflowId>`.
+- **Inputs:** required `workflowId`.
 - **Returns:** target-bound workflow metadata with required `id` and
   `isArchived: false`; optional name, type, active state, version, and
   timestamps are included only when supplied by n8n.
-- **Failures and privacy:** denied mode/confirmation issues zero requests.
+- **Failures and privacy:** a denied mode issues zero requests.
   Unarchiving does not imply activation; inspect returned state before taking a
   separate activation action.
-- **Example:** `{ "workflowId": "wf_1", "confirmation": "UNARCHIVE wf_1" }` →
+- **Example:** `{ "workflowId": "wf_1" }` →
   `{ "data": { "id": "wf_1", "isArchived": false }, "redacted": false, "untrusted": true }`.
 
 ## n8n_workflows_diff
@@ -407,14 +402,13 @@ Permanently deletes one saved execution.
 
 - **Policy and endpoint:** unsafe; `DELETE /executions/{executionId}`;
   `RO=false, D=true, I=false, OW=true`.
-- **Requirements:** Requires mode `unsafe`, exact target-bound confirmation, and API-key permission to delete execution data.
+- **Requirements:** Requires mode `unsafe` and API-key permission to delete execution data.
 - **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Deletion is permanent through this server and does not reverse external workflow effects.
-- **Inputs:** required `executionId`; `confirmation` must equal
-  `DELETE <executionId>`.
+- **Inputs:** required `executionId`.
 - **Returns:** the validated input ID and `deleted: true`.
-- **Failures and privacy:** denied mode/confirmation issues zero requests. This
+- **Failures and privacy:** a denied mode issues zero requests. This
   removes saved execution history and cannot be undone through the server.
-- **Example:** `{ "executionId": "exec_1", "confirmation": "DELETE exec_1" }` →
+- **Example:** `{ "executionId": "exec_1" }` →
   `{ "data": { "executionId": "exec_1", "deleted": true }, "redacted": false, "untrusted": true }`.
 
 ## n8n_executions_retry
@@ -423,16 +417,16 @@ Asks n8n to retry one eligible saved execution.
 
 - **Policy and endpoint:** unsafe; `POST /executions/{executionId}/retry`;
   `RO=false, D=true, I=false, OW=true`.
-- **Requirements:** Requires mode `unsafe`, exact target-bound confirmation, and API-key permission to retry the execution.
+- **Requirements:** Requires mode `unsafe` and API-key permission to retry the execution.
 - **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Retry eligibility depends on execution state and may repeat external side effects.
 - **Inputs:** required `executionId`; `loadWorkflow?: boolean` defaults to
-  `true`; `confirmation` must equal `RETRY <executionId>`.
+  `true`.
 - **Returns:** allowlisted metadata for the new or retried execution, with raw
   values omitted.
 - **Failures and privacy:** a retry can repeat external side effects from the
-  workflow. Denied mode/confirmation issues zero requests; n8n decides whether
+  workflow. A denied mode issues zero requests; n8n decides whether
   the saved execution is eligible.
-- **Example:** `{ "executionId": "exec_1", "loadWorkflow": true, "confirmation": "RETRY exec_1" }` →
+- **Example:** `{ "executionId": "exec_1", "loadWorkflow": true }` →
   `{ "data": { "id": "exec_2", "status": "new", "dataPolicy": { "rawValuesReturned": false } }, "redacted": false, "untrusted": true }`.
 
 ## n8n_executions_stop
@@ -441,20 +435,19 @@ Stops one currently running execution.
 
 - **Policy and endpoint:** unsafe; `POST /executions/{executionId}/stop`;
   `RO=false, D=true, I=false, OW=true`.
-- **Requirements:** Requires mode `unsafe`, exact target-bound confirmation, and API-key permission to stop the execution.
+- **Requirements:** Requires mode `unsafe` and API-key permission to stop the execution.
 - **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Only currently stoppable executions succeed; completed external effects are not rolled back.
-- **Inputs:** required `executionId`; `confirmation` must equal
-  `STOP <executionId>`.
+- **Inputs:** required `executionId`.
 - **Returns:** the validated input ID, a `stopped` boolean derived from the
   validated upstream `status`/`finished` body fields (n8n answers HTTP 200 even
   for executions that already finished, so HTTP success alone never asserts a
   stop), a `state` of `stopped`, `already_finished`, or `unknown`, passthrough
   `finished` when present, and allowlisted upstream status/timestamp when
   present. Identity never depends on the upstream body.
-- **Failures and privacy:** denied mode/confirmation issues zero requests. n8n
+- **Failures and privacy:** a denied mode issues zero requests. n8n
   may reject a terminal, missing, or non-stoppable execution; stopping may leave
   external side effects already performed by earlier nodes.
-- **Example:** `{ "executionId": "exec_1", "confirmation": "STOP exec_1" }` →
+- **Example:** `{ "executionId": "exec_1" }` →
   `{ "data": { "executionId": "exec_1", "stopped": true, "status": "canceled" }, "redacted": false, "untrusted": true }`.
 
 ## n8n_credentials_create
@@ -483,16 +476,15 @@ Permanently deletes one stored credential.
 
 - **Policy and endpoint:** unsafe; `DELETE /credentials/{credentialId}`;
   `RO=false, D=true, I=false, OW=true`.
-- **Requirements:** Requires mode `unsafe`, exact target-bound confirmation, and API-key permission to delete the credential.
+- **Requirements:** Requires mode `unsafe` and API-key permission to delete the credential.
 - **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Deletion can break referencing workflows and has no transfer fallback.
-- **Inputs:** required `credentialId`; `confirmation` must equal
-  `DELETE <credentialId>`.
+- **Inputs:** required `credentialId`.
 - **Returns:** the validated input ID and `deleted: true`. Any upstream object is
   discarded because n8n does not consistently echo the deleted ID.
-- **Failures and privacy:** denied mode/confirmation issues zero requests.
+- **Failures and privacy:** a denied mode issues zero requests.
   Deletion can break workflows that reference the credential; inspect usage
   first with `n8n_credentials_usage`.
-- **Example:** `{ "credentialId": "cred_1", "confirmation": "DELETE cred_1" }` →
+- **Example:** `{ "credentialId": "cred_1" }` →
   `{ "data": { "credentialId": "cred_1", "deleted": true }, "redacted": false, "untrusted": true }`.
 
 ## n8n_credentials_schema
@@ -577,17 +569,16 @@ Tests one stored credential through n8n.
 - **Policy and endpoint:** unsafe and open-world;
   `POST /credentials/{credentialId}/test`;
   `RO=false, D=true, I=false, OW=true`.
-- **Requirements:** Requires mode `unsafe`, exact target-bound confirmation, API-key permission to test the credential, and authorization for any resulting outbound contact.
+- **Requirements:** Requires mode `unsafe`, API-key permission to test the credential, and authorization for any resulting outbound contact.
 - **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Success depends on the credential type and its external service; no credential value is returned.
-- **Inputs:** required `credentialId`; `confirmation` must equal
-  `TEST <credentialId>`.
+- **Inputs:** required `credentialId`.
 - **Returns:** the input ID, the allowlisted `OK` or `Error` status, and a
   server-authored success/failure message. The upstream diagnostic message is
   withheld because it is untrusted and may contain credential or service data.
 - **Failures and privacy:** this call may contact the credential's external
-  service and cause observable authentication traffic. Denied mode or
-  confirmation issues zero requests; no upstream diagnostic text is returned.
-- **Example:** `{ "credentialId": "cred_1", "confirmation": "TEST cred_1" }` →
+  service and cause observable authentication traffic. A denied mode issues
+  zero requests; no upstream diagnostic text is returned.
+- **Example:** `{ "credentialId": "cred_1" }` →
   `{ "data": { "credentialId": "cred_1", "status": "OK", "message": "Credential test succeeded." }, "redacted": false, "untrusted": true }`.
 
 ## n8n_credentials_usage
@@ -685,14 +676,14 @@ Permanently deletes one workflow tag.
 
 - **Policy and endpoint:** unsafe; `DELETE /tags/{tagId}`;
   `RO=false, D=true, I=false, OW=true`.
-- **Requirements:** Requires mode `unsafe`, exact target-bound confirmation, and API-key permission to delete workflow tags.
+- **Requirements:** Requires mode `unsafe` and API-key permission to delete workflow tags.
 - **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Deletion can remove the tag from multiple workflows and is not reversible here.
-- **Inputs:** required `tagId`; `confirmation` must equal `DELETE <tagId>`.
+- **Inputs:** required `tagId`.
 - **Returns:** the validated input ID and `deleted: true`.
-- **Failures and privacy:** denied mode/confirmation issues zero requests.
+- **Failures and privacy:** a denied mode issues zero requests.
   Deletion may remove the tag from multiple workflows and is not reversible
   through this server.
-- **Example:** `{ "tagId": "tag_1", "confirmation": "DELETE tag_1" }` →
+- **Example:** `{ "tagId": "tag_1" }` →
   `{ "data": { "tagId": "tag_1", "deleted": true }, "redacted": false, "untrusted": true }`.
 
 ## n8n_users_list
@@ -738,11 +729,10 @@ Invites one non-owner user.
 
 - **Policy and endpoint:** unsafe; `POST /users`;
   `RO=false, D=false, I=false, OW=true`.
-- **Requirements:** Requires mode `unsafe`, exact email-bound confirmation, and API-key permission to invite users with the selected global role.
+- **Requirements:** Requires mode `unsafe` and API-key permission to invite users with the selected global role.
 - **Community Edition:** Verified on Community 2.30.5 and 2.30.7. The invitation is additive but may send email; it invites a global member/admin only and does not manage paid project membership.
 - **Inputs:** required `email` (valid email up to 254);
-  `role?: "global:member" | "global:admin"` defaults to `global:member`;
-  `confirmation` must equal `INVITE <email>`.
+  `role?: "global:member" | "global:admin"` defaults to `global:member`.
 - **Returns:** the confirmed user ID and email; `userCreated: true`; the
   requested role and whether n8n explicitly echoed that role in its response;
   whether n8n sent the invitation email; `invited: true` only when email was
@@ -753,10 +743,9 @@ Invites one non-owner user.
   email. Owner creation is not exposed. An empty, mismatched, or per-user error
   response fails closed with retry guidance because n8n may already have
   created a pending user. When manual delivery is required, retrieve the link
-  from a trusted n8n interface and deliver it out of band. Denied
-  mode/confirmation issues zero requests; verify the address and
-  least-privilege role before confirming.
-- **Example:** `{ "email": "member@example.test", "role": "global:member", "confirmation": "INVITE member@example.test" }` →
+  from a trusted n8n interface and deliver it out of band. A denied mode issues
+  zero requests; verify the address and least-privilege role before calling.
+- **Example:** `{ "email": "member@example.test", "role": "global:member" }` →
   `{ "data": { "userCreated": true, "invited": true, "userId": "user_2", "email": "[EMAIL]", "requestedRole": "global:member", "roleConfirmedByResponse": false, "emailSent": true, "delivery": "email_sent", "inviteAcceptUrlReturned": false }, "redacted": true, "untrusted": true }`.
 
 ## n8n_users_delete
@@ -765,16 +754,15 @@ Deletes one API-eligible user by stable ID.
 
 - **Policy and endpoint:** unsafe; `DELETE /users/{userId}` with no query or
   body; `RO=false, D=true, I=false, OW=true`.
-- **Requirements:** Requires mode `unsafe`, exact target-bound confirmation, and API-key permission to delete the selected non-owner user.
+- **Requirements:** Requires mode `unsafe` and API-key permission to delete the selected non-owner user.
 - **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Unsupported ownership-transfer behavior is deliberately absent.
-- **Inputs:** required `userId`; `confirmation` must equal `DELETE <userId>`.
+- **Inputs:** required `userId`.
 - **Returns:** the validated input ID and `deleted: true`; HTTP 204 with no body
   is accepted.
 - **Failures and privacy:** the supported Public API contract exposes no
   `transferId`, so this tool makes no ownership-transfer claim. n8n controls
-  eligibility and ownership handling. Denied mode/confirmation issues zero
-  requests.
-- **Example:** `{ "userId": "user_1", "confirmation": "DELETE user_1" }` →
+  eligibility and ownership handling. A denied mode issues zero requests.
+- **Example:** `{ "userId": "user_1" }` →
   `{ "data": { "userId": "user_1", "deleted": true }, "redacted": false, "untrusted": true }`.
 
 ## n8n_health
@@ -821,15 +809,13 @@ inspection and uses POST, so this server applies the conservative unsafe
 operation policy even though the scan is non-destructive.
 
 - **Policy and endpoint:** unsafe; `POST /audit`;
-  `RO=false, D=false, I=false, OW=true`. Requires mode `unsafe` and exact
-  confirmation `GENERATE AUDIT`.
-- **Requirements:** Requires mode `unsafe`, exact `GENERATE AUDIT` confirmation, and API-key permission to generate the instance audit.
+  `RO=false, D=false, I=false, OW=true`. Requires mode `unsafe`.
+- **Requirements:** Requires mode `unsafe` and API-key permission to generate the instance audit.
 - **Community Edition:** Verified on Community 2.30.5 and 2.30.7. The POST report endpoint remains unsafe-gated but is annotated non-destructive because it does not change instance resources or configuration; category support still depends on n8n.
 - **Inputs:** optional `categories`, an array of at most five selections
   from `credentials`, `database`, `nodes`, `filesystem`, and `instance`;
-  optional `daysAbandonedWorkflow` integer from 1 through 3,650; required
-  `confirmation` must equal `GENERATE AUDIT`. Options are sent under the
-  official `additionalOptions` request property.
+  optional `daysAbandonedWorkflow` integer from 1 through 3,650. Options are
+  sent under the official `additionalOptions` request property.
 - **Returns:** a bounded map of n8n-defined report titles. Every report has an
   official `risk` category and typed `sections`; sections contain a title,
   description, recommendation, and either typed credential/node/package/file
@@ -837,7 +823,7 @@ operation policy even though the scan is non-destructive.
 - **Failures and privacy:** instance-wide audit output can reveal sensitive
   security posture and remains untrusted. Unsupported categories, permissions,
   versions, or malformed reports return sanitized errors.
-- **Example:** `{ "categories": ["credentials"], "daysAbandonedWorkflow": 30, "confirmation": "GENERATE AUDIT" }` →
+- **Example:** `{ "categories": ["credentials"], "daysAbandonedWorkflow": 30 }` →
   `{ "data": { "Credentials Risk Report": { "risk": "credentials", "sections": [{ "title": "Unused credentials", "description": "Credentials not used by any workflow.", "recommendation": "Delete credentials that are no longer required.", "location": [{ "kind": "credential", "id": "cred_1", "name": "n8n API" }] }] } }, "redacted": false, "untrusted": true }`.
 
 ## n8n_search_workflows

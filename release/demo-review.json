@@ -1,9 +1,8 @@
 {
-  "schemaVersion": 2,
-  "packageVersion": "0.1.4",
-  "command": "npx --yes n8n-mcp-community@0.1.4 --version",
-  "versionOutput": "0.1.4",
-  "gifSha256": "59091f09747d7831ecab4345a84e6dff4947c9afbe7f6131e09a0394a129392c",
+  "schemaVersion": 3,
+  "packageVersion": "0.2.0",
+  "command": "npm install --global n8n-mcp-community@latest",
+  "gifSha256": "b826665865216793a68546c1b8aabe35a6224537747114960521644f408efed0",
   "versionHistory": [
     {
       "packageVersion": "0.1.2",
@@ -16,6 +15,10 @@
     {
       "packageVersion": "0.1.4",
       "gifSha256": "59091f09747d7831ecab4345a84e6dff4947c9afbe7f6131e09a0394a129392c"
+    },
+    {
+      "packageVersion": "0.2.0",
+      "gifSha256": "b826665865216793a68546c1b8aabe35a6224537747114960521644f408efed0"
     }
   ],
   "logicalScreen": {

@@ -28,6 +28,25 @@ Private development candidates do not require a human artifact receipt. Their
 normal gates still verify exact manifests, byte-reproducible artifacts, clean
 installation, security scans, and source/package boundaries after every change.
 
+### Review repository-only demo media
+
+The README GIF stays in the repository and is deliberately excluded from npm
+and MCPB artifacts. Its renderer requires Chrome or Chromium, `ffmpeg`, and
+`gifsicle`; the command prints every detected version.
+
+Run `npm run demo:check` to render into a temporary directory and compare the
+bytes without changing the tracked GIF. Run `npm run demo:render` only when the
+content intentionally changes: it overwrites `docs/assets/demo.gif`. Review all
+11 frames, the timing, the transcript, and the final digest before accepting
+the change. If the render was accidental, restore the tracked GIF with
+`git restore docs/assets/demo.gif`.
+
+Byte identity is proved only for the reviewed workstation and printed
+toolchain. Fonts and media encoders are not portable enough to claim the same
+bytes on every operating system. The committed digest and immutable history
+bind the reviewed media even when a later release correctly reuses unchanged
+GIF bytes.
+
 Require the receipt only after all source audits are complete and the reviewed
 release transition sets `package.private` to `false`, activates the signing
 policy, and adds its public certificate chain. At that point, run

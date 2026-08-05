@@ -68,7 +68,7 @@ from `expectedVersionId`.
 ## Stop an execution
 
 Warning: stopping an active execution can interrupt externally visible work and
-cannot be undone through this server. Confirm the synthetic target exactly.
+cannot be undone through this server. Verify the target before calling it.
 
 Required mode: `unsafe`.
 
@@ -76,11 +76,10 @@ Required mode: `unsafe`.
 
 ```json
 {
-  "executionId": "exec_synthetic_1",
-  "confirmation": "STOP exec_synthetic_1"
+  "executionId": "exec_synthetic_1"
 }
 ```
 
-Missing or mismatched confirmation is denied before any n8n request.
+Any mode other than `unsafe` is denied before an n8n request.
 
 [Back to the documentation map](README.md)

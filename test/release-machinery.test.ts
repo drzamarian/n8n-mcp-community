@@ -482,19 +482,17 @@ test("demo review history is anchored to immutable annotated release tags", asyn
   assert.doesNotThrow(() =>
     contract.assertDemoVersionHistory(validHistory, "0.1.3", currentDigest, initialAnchor),
   );
-  assert.throws(
-    () =>
-      contract.assertDemoVersionHistory(
-        [...validHistory, { packageVersion: "0.1.4", gifSha256: currentDigest }],
-        "0.1.4",
-        currentDigest,
-        {
-          packageVersion: "0.1.3",
-          gifSha256: currentDigest,
-          versionHistory: validHistory,
-        },
-      ),
-    /reused GIF digest/,
+  assert.doesNotThrow(() =>
+    contract.assertDemoVersionHistory(
+      [...validHistory, { packageVersion: "0.1.4", gifSha256: currentDigest }],
+      "0.1.4",
+      currentDigest,
+      {
+        packageVersion: "0.1.3",
+        gifSha256: currentDigest,
+        versionHistory: validHistory,
+      },
+    ),
   );
   assert.throws(
     () =>
@@ -618,7 +616,7 @@ test("demo review history is anchored to immutable annotated release tags", asyn
     git("tag", "-a", "v0.1.3", "-m", "v0.1.3");
     assert.throws(
       () => contract.readPreviousDemoRelease(root, "0.1.4"),
-      /schema version 2 and a valid version history/,
+      /supported schema and a valid version history/,
     );
 
     git("tag", "-a", "v0.1.4", "-m", "mismatched v0.1.4");

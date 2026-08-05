@@ -44,7 +44,6 @@ function validateHistoryEntries(history) {
   }
 
   const versions = new Set();
-  const digests = new Set();
   let previousVersion;
 
   for (const [index, entry] of history.entries()) {
@@ -66,10 +65,8 @@ function validateHistoryEntries(history) {
     }
     if (versions.has(entry.packageVersion))
       fail(`duplicate release version ${entry.packageVersion}`);
-    if (digests.has(entry.gifSha256)) fail(`reused GIF digest ${entry.gifSha256}`);
 
     versions.add(entry.packageVersion);
-    digests.add(entry.gifSha256);
     previousVersion = version;
   }
 
@@ -128,10 +125,10 @@ export function readPreviousDemoRelease(root, currentVersion) {
       previousManifest === null ||
       typeof previousManifest !== "object" ||
       Array.isArray(previousManifest) ||
-      previousManifest.schemaVersion !== 2 ||
+      ![2, 3].includes(previousManifest.schemaVersion) ||
       !Array.isArray(previousManifest.versionHistory)
     ) {
-      fail(`${previous.tag} must contain schema version 2 and a valid version history`);
+      fail(`${previous.tag} must contain a supported schema and a valid version history`);
     }
     validateHistoryEntries(previousManifest.versionHistory);
   }

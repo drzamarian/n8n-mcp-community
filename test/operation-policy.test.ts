@@ -14,26 +14,16 @@ test("writes require write or unsafe mode", () => {
   assert.doesNotThrow(() => authorizeOperation("unsafe", "write"));
 });
 
-test("unsafe operations require unsafe mode and an exact confirmation", () => {
-  const exact = { supplied: "DELETE wf_1", expected: "DELETE wf_1" };
-  assert.throws(() => authorizeOperation("read-only", "unsafe", exact), PolicyError);
-  assert.throws(() => authorizeOperation("write", "unsafe", exact), PolicyError);
+test("unsafe operations require unsafe mode and no second authorization input", () => {
   assert.throws(
-    () => authorizeOperation("unsafe", "unsafe"),
+    () => authorizeOperation("read-only", "unsafe"),
     (error: unknown) =>
-      error instanceof PolicyError &&
-      error.message === "The supplied confirmation did not match the required exact phrase.",
+      error instanceof PolicyError && error.message === "This tool requires N8N_MCP_MODE=unsafe.",
   );
   assert.throws(
-    () =>
-      authorizeOperation("unsafe", "unsafe", {
-        supplied: "delete wf_1",
-        expected: "DELETE wf_1",
-      }),
+    () => authorizeOperation("write", "unsafe"),
     (error: unknown) =>
-      error instanceof PolicyError &&
-      error.message === "The supplied confirmation did not match the required exact phrase." &&
-      !error.message.includes("DELETE wf_1"),
+      error instanceof PolicyError && error.message === "This tool requires N8N_MCP_MODE=unsafe.",
   );
-  assert.doesNotThrow(() => authorizeOperation("unsafe", "unsafe", exact));
+  assert.doesNotThrow(() => authorizeOperation("unsafe", "unsafe"));
 });

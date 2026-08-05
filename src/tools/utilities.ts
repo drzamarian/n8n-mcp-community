@@ -12,7 +12,7 @@ import { sanitizeIntrospectResultForOutput } from "../introspect/sanitize.js";
 import { NODE_DOCUMENTATION } from "../content/node-docs.js";
 import { defineTool, type ToolDefinition } from "./definition.js";
 import { booleanQuery, numberQuery, requireSafeAscii } from "./common.js";
-import { confirmation, cursor, identifier, pageLimit } from "./schemas.js";
+import { cursor, identifier, pageLimit } from "./schemas.js";
 import { compareCodeUnits } from "../introspect/order.js";
 import { securityAuditSchema } from "./response-contracts.js";
 
@@ -145,7 +145,7 @@ export const utilityTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_audit_generate",
     title: "Generate security audit",
     description:
-      "Run n8n's broad, non-destructive instance security scan. Use it for an owner-approved audit; use n8n_introspect for local analysis of one workflow. Omitting categories lets n8n choose its complete default, while daysAbandonedWorkflow changes only the inactive-workflow threshold. Requires unsafe mode, owner-authorized API access, and exact GENERATE AUDIT confirmation; returns a sanitized but untrusted report without changing instance configuration.",
+      "Run n8n's broad, non-destructive instance security scan. Use it for an owner-approved audit; use n8n_introspect for local analysis of one workflow. Omitting categories lets n8n choose its complete default, while daysAbandonedWorkflow changes only the inactive-workflow threshold. Requires unsafe mode and owner-authorized API access; returns a sanitized but untrusted report without changing instance configuration.",
     operation: "unsafe",
     preserveValidatedRootRecordValues: true,
     outputDataDescription:
@@ -164,12 +164,7 @@ export const utilityTools: readonly ToolDefinition[] = Object.freeze([
         .max(3_650)
         .optional()
         .describe("Age threshold in days for classifying an inactive workflow as abandoned."),
-      confirmation,
     },
-    confirmation: (input) => ({
-      supplied: input.confirmation,
-      expected: "GENERATE AUDIT",
-    }),
     handler: async (input, context) =>
       securityAuditSchema.parse(
         await context.client().request({

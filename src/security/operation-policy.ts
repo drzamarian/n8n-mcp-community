@@ -11,19 +11,12 @@ export class PolicyError extends Error {
   }
 }
 
-export function authorizeOperation(
-  configuredMode: OperationMode,
-  operation: OperationClass,
-  confirmation?: { readonly supplied: string | undefined; readonly expected: string },
-): void {
+export function authorizeOperation(configuredMode: OperationMode, operation: OperationClass): void {
   if (operation === "write" && configuredMode === "read-only") {
     throw new PolicyError("This tool requires N8N_MCP_MODE=write or unsafe.");
   }
   if (operation !== "unsafe") return;
   if (configuredMode !== "unsafe") {
     throw new PolicyError("This tool requires N8N_MCP_MODE=unsafe.");
-  }
-  if (!confirmation || confirmation.supplied !== confirmation.expected) {
-    throw new PolicyError("The supplied confirmation did not match the required exact phrase.");
   }
 }

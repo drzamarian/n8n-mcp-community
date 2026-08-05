@@ -3,7 +3,6 @@ import { defineTool, type ToolDefinition } from "./definition.js";
 import { booleanQuery, numberQuery } from "./common.js";
 import {
   assertSafeJson,
-  confirmation,
   cursor,
   identifier,
   pageLimit,
@@ -116,15 +115,11 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_credentials_delete",
     title: "Delete credential",
     description:
-      "Permanently delete one stored credential, which can break every referencing workflow. Use n8n_credentials_usage across all pages first; use n8n_credentials_update when replacement is sufficient. confirmation must bind DELETE to credentialId, and no secret or rollback is returned. Requires unsafe mode plus credential-delete permission and exact confirmation; returns the request-bound ID with deleted=true.",
+      "Permanently delete one stored credential, which can break every referencing workflow. Use n8n_credentials_usage across all pages first; use n8n_credentials_update when replacement is sufficient. No secret or rollback is returned. Requires unsafe mode plus credential-delete permission; returns the request-bound ID with deleted=true.",
     operation: "unsafe",
     outputDataDescription:
       "Object with the validated input credentialId and deleted=true. Identity is bound to the request because n8n does not consistently return the deleted credential ID.",
-    input: { credentialId: identifier("Stable ID of the credential to delete."), confirmation },
-    confirmation: (input) => ({
-      supplied: input.confirmation,
-      expected: `DELETE ${input.credentialId}`,
-    }),
+    input: { credentialId: identifier("Stable ID of the credential to delete.") },
     handler: async (input, context) => {
       await context
         .client()
@@ -255,19 +250,12 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_credentials_test",
     title: "Test credential",
     description:
-      "Test one stored credential by allowing n8n to contact its external service, which receives and may log the attempt. Use n8n_credentials_get for metadata-only inspection and do not call this when network contact is unwanted. confirmation must bind TEST to credentialId. Requires unsafe mode plus test permission and exact confirmation; returns only the target-bound OK/Error outcome and withholds the upstream diagnostic message because it may contain secrets.",
+      "Test one stored credential by allowing n8n to contact its external service, which receives and may log the attempt. Use n8n_credentials_get for metadata-only inspection and do not call this when network contact is unwanted. Requires unsafe mode plus test permission; returns only the target-bound OK/Error outcome and withholds the upstream diagnostic message because it may contain secrets.",
     operation: "unsafe",
     outputDataDescription:
       "Object with credentialId, status OK or Error, and a server-authored message that discloses only whether the test succeeded. The untrusted upstream diagnostic message is never returned.",
     openWorld: true,
-    input: {
-      credentialId: identifier("Stable ID of the stored credential to test."),
-      confirmation,
-    },
-    confirmation: (input) => ({
-      supplied: input.confirmation,
-      expected: `TEST ${input.credentialId}`,
-    }),
+    input: { credentialId: identifier("Stable ID of the stored credential to test.") },
     handler: async (input, context) => {
       const raw = z.object({ status: z.enum(["OK", "Error"]) }).parse(
         await context.client().request({
