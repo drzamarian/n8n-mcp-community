@@ -122,68 +122,284 @@ const NON_DESTRUCTIVE_MUTATIONS = new Map<ToolName, "write" | "unsafe">([
 ]);
 
 const DESCRIPTION_PARAMETER_SEMANTICS: Readonly<Record<ToolName, RegExp>> = {
-  n8n_workflows_list: /cursor resumes .* never auto-paginates/i,
-  n8n_workflows_get: /excludePinnedData controls only .* presence reporting/i,
-  n8n_workflows_create: /nodes and connections must describe one complete consistent graph/i,
+  n8n_workflows_list:
+    /Omit cursor for page one.*active, tags, and name are combined upstream.*keep those filters and excludePinnedData unchanged.*nextCursor/i,
+  n8n_workflows_get:
+    /workflowId is the stable ID.*not a workflow name or version ID.*excludePinnedData changes only.*pinDataPresent\/staticDataPresent flags.*whether true or false/i,
+  n8n_workflows_create:
+    /name, nodes, and connections define a new record.*complete graph.*omitting settings uses an empty object.*Optional .* forwarded only when supplied/i,
   n8n_workflows_update:
-    /expectedVersionId must match both pre-write reads.*supplied nodes .* replace/i,
-  n8n_update_node: /path selects the mutable root whose contract validates value/i,
-  n8n_workflows_delete: /no rollback or transfer/i,
+    /workflowId selects the current record.*expectedVersionId from its latest read.*at least one writable field.*Omitted fields are preserved.*replaces that whole field/i,
+  n8n_update_node:
+    /workflowId selects the current workflow, nodeId selects exactly one node.*path selects the mutable field.*expectedVersionId.*acknowledgeNonAtomicRisk=true/i,
+  n8n_workflows_delete:
+    /workflowId must be the current stable ID.*name or version ID is not accepted/i,
   n8n_workflows_activate:
-    /production triggers can accept future events.*does not execute it immediately/i,
-  n8n_workflows_deactivate: /without deleting saved data or stopping executions already running/i,
-  n8n_workflows_get_version: /Both returned IDs must match the selectors.*ambiguous 404/i,
-  n8n_workflows_get_tags: /endpoint has no cursor.*at most 100.*exact omissions/i,
-  n8n_workflows_update_tags: /tagIds is the entire desired set.*empty array clears all tags/i,
-  n8n_workflows_archive: /availability change can disrupt callers/i,
-  n8n_workflows_unarchive: /without activating its triggers.*active state is not inferred/i,
-  n8n_workflows_diff: /Omitting toVersionId selects current.*ignoreLayout=true suppresses/i,
+    /does not execute it now.*workflowId must be the current stable ID.*not a name or version ID/i,
+  n8n_workflows_deactivate:
+    /without deleting saved data or stopping runs already in progress.*workflowId must be the current stable ID.*not a name or version ID/i,
+  n8n_workflows_get_version:
+    /workflowId is the stable workflow ID; versionId is .* separate retained-version ID.*Do not swap them/i,
+  n8n_workflows_get_tags:
+    /workflowId selects the workflow.*not a tag ID.*does not list unassigned tags/i,
+  n8n_workflows_update_tags:
+    /workflowId selects the workflow.*tagIds item must be a stable tag ID.*tag names are not accepted.*\[\] clears all tags/i,
+  n8n_workflows_archive:
+    /workflowId must be the current stable ID.*not a name or version ID.*availability change can disrupt callers/i,
+  n8n_workflows_unarchive:
+    /without activating its triggers.*workflowId must identify the archived workflow itself.*not a name or version ID/i,
+  n8n_workflows_diff:
+    /workflowId selects the workflow; fromVersionId is the retained baseline.*toVersionId is a different retained target.*Omit toVersionId.*ignoreLayout=true/i,
   n8n_executions_list: /status and workflowId filter upstream.*includeData only reports/i,
-  n8n_executions_get: /includeData changes only.*never returns node inputs or outputs/i,
-  n8n_executions_delete: /no recovery or rollback/i,
+  n8n_executions_get:
+    /executionId is the execution record ID.*not its workflowId.*includeData=true.*withholds every node input and output/i,
+  n8n_executions_delete:
+    /executionId must be the execution record ID.*workflow ID is not accepted/i,
   n8n_executions_retry:
-    /loadWorkflow=true uses the currently saved workflow.*false uses the original execution snapshot/i,
-  n8n_executions_stop: /successful HTTP response alone does not prove cancellation/i,
-  n8n_credentials_create: /type selects the schema .* isResolvable is sent only when supplied/i,
-  n8n_credentials_delete: /usage across all pages first.*no secret or rollback/i,
-  n8n_credentials_schema: /credentialType is a route selector, not a stored credential ID/i,
+    /has retry data and did not finish successfully.*rejects queued\/new executions and successful finished executions.*loadWorkflow=true.*false uses the original execution snapshot/i,
+  n8n_executions_stop:
+    /stoppable execution: new, unknown, waiting, or running.*executionId must be its record ID.*not a workflow ID.*rejects an execution that is already terminal.*successful response.*canceled maps to stopped.*terminal status maps to already_finished.*unclear body maps to unknown.*HTTP 200 alone never proves cancellation/i,
+  n8n_credentials_create:
+    /call n8n_credentials_schema with the planned type, then build data.*name is only the stored label.*isResolvable is forwarded only when supplied/i,
+  n8n_credentials_delete:
+    /credentialId must be the stable ID.*name or type is not accepted.*Scan all n8n_credentials_usage pages first/i,
+  n8n_credentials_schema:
+    /credentialType is the public type name.*not a stored credential ID, name, or secret.*which keys belong in data/i,
   n8n_credentials_list:
-    /cursor resumes a prior page.*limit bounds that single request.*never auto-paginates/i,
-  n8n_credentials_get: /credentialId identifies stored metadata only/i,
+    /Omit cursor for page one.*pass nextCursor back unchanged.*limit sizes only that request.*never auto-paginates/i,
+  n8n_credentials_get: /credentialId is the stable ID.*not its name, type, or secret data/i,
   n8n_credentials_update:
-    /isPartialData=false treats data as replacement.*true requests a partial merge/i,
+    /credentialId selects the record.*omit fields to keep them and supply at least one change.*If type changes, data is also required.*isPartialData=false replaces.*true requests a partial merge/i,
   n8n_credentials_test:
-    /external service, which receives and may log the attempt.*network contact is unwanted/i,
+    /external service, which receives and may log the attempt.*credentialId is the stable ID.*inline credential data, names, and types are not accepted/i,
   n8n_credentials_usage:
-    /active filters upstream.*unresolved legacy references.*nextCursor is null/i,
-  n8n_tags_list: /cursor resumes the prior page.*continue nextCursor until null/i,
-  n8n_tags_get: /tagId identifies the reusable tag itself, not a workflow assignment/i,
+    /credentialId is the stable ID.*keep credentialId, active, and limit unchanged.*Unresolved legacy references.*nextCursor is null/i,
+  n8n_tags_list:
+    /Omit cursor for page one.*pass nextCursor back unchanged.*limit sizes only the current page/i,
+  n8n_tags_get: /tagId is the stable tag identity.*tag name or workflow ID is not accepted/i,
   n8n_tags_create:
-    /name must already be trimmed.*duplicate-name handling.*never changes any workflow assignment/i,
-  n8n_tags_update: /tagId selects the existing record and name is its complete replacement/i,
-  n8n_tags_delete: /remove that label from multiple workflows.*no rollback/i,
+    /name is the literal display label, not a tag ID or workflow assignment.*must already be trimmed.*never assigns the tag/i,
+  n8n_tags_update:
+    /tagId is the stable selector.*name is the complete new display label, not another ID/i,
+  n8n_tags_delete: /tagId must be the stable ID.*tag name or workflow ID is not accepted/i,
   n8n_users_list: /includeRole=true only asks n8n for roles.*cursor resumes.*never auto-paginates/i,
   n8n_users_get:
-    /userIdOrEmail chooses ID lookup or an exact percent-encoded email lookup.*cannot guarantee role visibility/i,
-  n8n_users_create: /role defaults to global:member.*pending user exists/i,
+    /userIdOrEmail routes ID-shaped input to ID lookup.*exact percent-encoded email lookup.*partial email matching is not used.*includeRole=true/i,
+  n8n_users_create:
+    /email is the future account login.*role is a global account role, not project membership.*omission selects global:member.*owner invitations are rejected/i,
   n8n_users_delete:
-    /userId accepts no transfer target.*ownership handling remains entirely with n8n/i,
+    /userId must be the stable ID.*email address is not accepted.*no transfer target.*ownership handling remains entirely with n8n/i,
   n8n_health:
-    /one redirect-free same-origin .* 10-second timeout.*requires configured URL\/key values/i,
+    /accepts no arguments and requires the configured n8n URL and API key.*remote plaintext HTTP also requires N8N_ALLOW_INSECURE_HTTP=1/i,
   n8n_insights_summary:
     /startDate and endDate are inclusive.*startDate <= endDate.*omitting both requests n8n's default range/i,
   n8n_audit_generate:
-    /Omitting categories lets n8n choose its complete default.*daysAbandonedWorkflow changes only/i,
+    /Omit categories to use n8n's complete default.*supply the exact risk areas.*daysAbandonedWorkflow is independent.*changes only/i,
   n8n_search_workflows:
-    /searchIn selects local fields after active filters upstream.*cursor and limit select one page/i,
+    /query is matched locally only in the fields named by searchIn.*active filters upstream first.*keep query, searchIn, active, and limit unchanged/i,
   n8n_get_node_docs:
-    /four-value node key.*no n8n URL, API key, network, or elevated mode.*never follows/i,
+    /node is an exact local key.*not an arbitrary n8n node-type string.*no n8n URL, API key, network, or elevated mode/i,
   n8n_list_node_types:
-    /cursor selects the start, maxPages bounds continuation, and active filters upstream.*starting at the first page and reaching the end/i,
+    /Omit cursor to start at page one.*maxPages limits.*active and limit apply to every page.*keep them unchanged.*starting at page one and reaching the end.*30 seconds or 20,000 nodes/i,
   n8n_introspect:
     /quick uses 24h\/20 and caps maxExecutions at 25.*deep uses 168h\/50.*includeSanitizedLabels=false/i,
-  n8n_community_packages_list: /zero-input call retains at most 100.*exact total\/omitted counts/i,
+  n8n_community_packages_list:
+    /accepts no arguments, filters, cursor, or limit.*keeps at most 100.*exact omissions/i,
 };
+
+const DESCRIPTION_AUTHORIZATION_SEMANTICS: Readonly<Record<ToolName, RegExp>> = {
+  n8n_workflows_list: /Requires workflow-list permission/i,
+  n8n_workflows_get: /Requires permission to read the target/i,
+  n8n_workflows_create: /Requires write or unsafe mode plus create permission/i,
+  n8n_workflows_update: /Requires write\/unsafe mode plus read and update permission/i,
+  n8n_update_node: /Requires write\/unsafe mode plus read and update permission/i,
+  n8n_workflows_delete: /Requires unsafe mode plus delete permission/i,
+  n8n_workflows_activate: /Requires unsafe mode plus activation permission/i,
+  n8n_workflows_deactivate: /Requires unsafe mode plus deactivation permission/i,
+  n8n_workflows_get_version: /Requires history-read permission/i,
+  n8n_workflows_get_tags: /Requires assignment-read permission/i,
+  n8n_workflows_update_tags: /Requires write\/unsafe mode plus assignment permission/i,
+  n8n_workflows_archive: /Requires unsafe mode plus archive permission/i,
+  n8n_workflows_unarchive: /Requires unsafe mode plus unarchive permission/i,
+  n8n_workflows_diff: /Requires workflow\/history read permission/i,
+  n8n_executions_list: /Requires execution-list permission/i,
+  n8n_executions_get: /Requires execution-read permission/i,
+  n8n_executions_delete: /Requires unsafe mode plus execution-delete permission/i,
+  n8n_executions_retry: /Requires unsafe mode and retry permission/i,
+  n8n_executions_stop: /Requires unsafe mode and stop permission/i,
+  n8n_credentials_create: /Requires write\/unsafe mode plus create permission/i,
+  n8n_credentials_delete: /Requires unsafe mode plus credential-delete permission/i,
+  n8n_credentials_schema: /Requires schema-read permission/i,
+  n8n_credentials_list: /Requires credential-list permission/i,
+  n8n_credentials_get: /Requires credential-read permission/i,
+  n8n_credentials_update: /Requires write\/unsafe mode plus update permission/i,
+  n8n_credentials_test: /Requires unsafe mode plus test permission/i,
+  n8n_credentials_usage: /Requires workflow-list permission/i,
+  n8n_tags_list: /Requires tag-list permission/i,
+  n8n_tags_get: /Requires tag-read permission/i,
+  n8n_tags_create: /Requires write\/unsafe mode plus create permission/i,
+  n8n_tags_update: /Requires write\/unsafe mode plus tag-update permission/i,
+  n8n_tags_delete: /Requires unsafe mode plus tag-delete permission/i,
+  n8n_users_list: /Requires user-list permission/i,
+  n8n_users_get: /Requires user-read permission/i,
+  n8n_users_create: /Requires unsafe mode plus invite permission/i,
+  n8n_users_delete: /Requires unsafe mode plus user-delete permission/i,
+  n8n_health:
+    /requires the configured n8n URL and API key; remote plaintext HTTP also requires N8N_ALLOW_INSECURE_HTTP=1/i,
+  n8n_insights_summary: /Requires insights-read permission/i,
+  n8n_audit_generate: /Requires unsafe mode and owner-authorized API access/i,
+  n8n_search_workflows: /Requires workflow-list permission/i,
+  n8n_get_node_docs: /Requires no n8n URL, API key, network, or elevated mode/i,
+  n8n_list_node_types: /Requires workflow-list permission/i,
+  n8n_introspect: /Requires workflow\/execution read permission/i,
+  n8n_community_packages_list: /Requires package-list permission/i,
+};
+
+const DESCRIPTION_RETURN_SEMANTICS: Readonly<Record<ToolName, RegExp>> = {
+  n8n_workflows_list: /returns projected workflows and nextCursor, never pin\/static values/i,
+  n8n_workflows_get: /returns structure, state, settings, and presence flags/i,
+  n8n_workflows_create: /returns the validated projection without pin\/static values/i,
+  n8n_workflows_update: /returns the confirmed projection/i,
+  n8n_update_node: /returns the changed path and residual race risk/i,
+  n8n_workflows_delete: /returns the request-bound workflowId with deleted=true/i,
+  n8n_workflows_activate: /returns target-validated active state metadata/i,
+  n8n_workflows_deactivate: /returns target-validated inactive state metadata/i,
+  n8n_workflows_get_version: /returns validated nodes and connections subject to retention/i,
+  n8n_workflows_get_tags: /returns validated tag metadata/i,
+  n8n_workflows_update_tags: /returns n8n's validated replacement/i,
+  n8n_workflows_archive: /returns target-validated metadata with isArchived=true/i,
+  n8n_workflows_unarchive: /returns target-validated metadata with isArchived=false/i,
+  n8n_workflows_diff: /returns coverage, counts, and a byte-bounded prefix of up to 200 changes/i,
+  n8n_executions_list: /returns metadata and nextCursor/i,
+  n8n_executions_get: /returns identity, status, timing, retry fields, and value-free dataPolicy/i,
+  n8n_executions_delete: /returns the request-bound executionId with deleted=true/i,
+  n8n_executions_retry: /returns metadata without payload values/i,
+  n8n_executions_stop: /returns the mapped state/i,
+  n8n_credentials_create: /returns metadata only/i,
+  n8n_credentials_delete: /returns the request-bound credentialId with deleted=true/i,
+  n8n_credentials_schema: /returns the validated upstream field contract/i,
+  n8n_credentials_list: /returns metadata and nextCursor, never stored values/i,
+  n8n_credentials_get: /returns validated identity, type, flags, and timestamps/i,
+  n8n_credentials_update: /returns metadata without secret values/i,
+  n8n_credentials_test:
+    /returns only the target-bound OK\/Error outcome and withholds the upstream diagnostic message/i,
+  n8n_credentials_usage: /returns bounded workflow\/node matches and omission counts/i,
+  n8n_tags_list: /returns validated metadata and nextCursor/i,
+  n8n_tags_get: /returns validated ID, name, and optional timestamps/i,
+  n8n_tags_create: /returns validated metadata/i,
+  n8n_tags_update: /returns validated metadata/i,
+  n8n_tags_delete: /returns the request-bound tagId with deleted=true/i,
+  n8n_users_list: /returns redaction-protected metadata and nextCursor/i,
+  n8n_users_get: /returns redaction-protected identity and account state without mutation/i,
+  n8n_users_create: /returns delivery state but never the acceptance URL/i,
+  n8n_users_delete:
+    /returns the request-bound userId with deleted=true and provides no rollback claim/i,
+  n8n_health: /Returns ok=true and the successful status, never the upstream body/i,
+  n8n_insights_summary: /returns totals, failures, rates, time saved, and runtime aggregates/i,
+  n8n_audit_generate: /returns a sanitized but untrusted report without changing configuration/i,
+  n8n_search_workflows: /returns at most 50 value-free matches and explicit scan state/i,
+  n8n_get_node_docs:
+    /Returns source\/fetched provenance, canonical type, title, summary, guidance, and official URL/i,
+  n8n_list_node_types: /returns counts and exact coverage, capped at 30 seconds or 20,000 nodes/i,
+  n8n_introspect: /returns findings and coverage/i,
+  n8n_community_packages_list: /returns untrusted metadata with author emails redacted/i,
+};
+
+type GlamaV020Score = 4.7 | 4.8 | 4.9 | 5.0;
+
+// Independent transcription of Walter's complete Glama report. Keeping every score makes a
+// same-size class swap observable instead of deriving the 40/4 split from its own expectation.
+const GLAMA_V020_SCORE_BY_TOOL: Readonly<Record<ToolName, GlamaV020Score>> = {
+  n8n_workflows_list: 4.7,
+  n8n_workflows_get: 4.7,
+  n8n_workflows_create: 4.9,
+  n8n_workflows_update: 4.9,
+  n8n_update_node: 4.9,
+  n8n_workflows_delete: 4.7,
+  n8n_workflows_activate: 4.7,
+  n8n_workflows_deactivate: 4.7,
+  n8n_workflows_get_version: 4.7,
+  n8n_workflows_get_tags: 4.7,
+  n8n_workflows_update_tags: 4.7,
+  n8n_workflows_archive: 4.7,
+  n8n_workflows_unarchive: 4.7,
+  n8n_workflows_diff: 4.9,
+  n8n_executions_list: 5.0,
+  n8n_executions_get: 4.7,
+  n8n_executions_delete: 4.7,
+  n8n_executions_retry: 4.8,
+  n8n_executions_stop: 4.7,
+  n8n_credentials_create: 4.9,
+  n8n_credentials_delete: 4.7,
+  n8n_credentials_schema: 4.9,
+  n8n_credentials_list: 4.9,
+  n8n_credentials_get: 4.9,
+  n8n_credentials_update: 4.9,
+  n8n_credentials_test: 4.7,
+  n8n_credentials_usage: 4.9,
+  n8n_tags_list: 4.7,
+  n8n_tags_get: 4.9,
+  n8n_tags_create: 4.7,
+  n8n_tags_update: 4.7,
+  n8n_tags_delete: 4.7,
+  n8n_users_list: 5.0,
+  n8n_users_get: 4.9,
+  n8n_users_create: 4.9,
+  n8n_users_delete: 4.9,
+  n8n_health: 4.9,
+  n8n_insights_summary: 5.0,
+  n8n_audit_generate: 4.9,
+  n8n_search_workflows: 4.9,
+  n8n_get_node_docs: 4.7,
+  n8n_list_node_types: 4.9,
+  n8n_introspect: 5.0,
+  n8n_community_packages_list: 4.9,
+};
+
+const EXPECTED_GLAMA_V020_ALREADY_FIVE: readonly ToolName[] = [
+  "n8n_executions_list",
+  "n8n_insights_summary",
+  "n8n_introspect",
+  "n8n_users_list",
+];
+
+function glamaV020PartitionViolations(
+  scores: Readonly<Record<ToolName, GlamaV020Score>>,
+): string[] {
+  const violations: string[] = [];
+  if (Object.keys(scores).sort().join("\n") !== [...EXPECTED_TOOLS].sort().join("\n")) {
+    violations.push("report inventory");
+  }
+  const actualFive = EXPECTED_TOOLS.filter((name) => scores[name] === 5.0).sort();
+  if (actualFive.join("\n") !== [...EXPECTED_GLAMA_V020_ALREADY_FIVE].sort().join("\n")) {
+    violations.push("5.0 membership");
+  }
+  const counts = new Map<GlamaV020Score, number>([
+    [4.7, 0],
+    [4.8, 0],
+    [4.9, 0],
+    [5.0, 0],
+  ]);
+  for (const score of Object.values(scores)) counts.set(score, (counts.get(score) ?? 0) + 1);
+  if (
+    counts.get(4.7) !== 20 ||
+    counts.get(4.8) !== 1 ||
+    counts.get(4.9) !== 19 ||
+    counts.get(5.0) !== 4
+  ) {
+    violations.push("score counts");
+  }
+  return violations;
+}
+
+// Walter's complete Glama v0.2.0 report scored these four definitions at 5.0.
+// Every other member of EXPECTED_TOOLS is part of the parameter-semantics remediation class.
+// The remediation class derives from the 44-row score fixture; the 5.0 class is an independent
+// literal, and the partition test cross-checks them.
+const GLAMA_V020_ALREADY_FIVE = new Set<ToolName>(EXPECTED_GLAMA_V020_ALREADY_FIVE);
+const GLAMA_V020_PARAMETER_REMEDIATION = EXPECTED_TOOLS.filter(
+  (name) => GLAMA_V020_SCORE_BY_TOOL[name] < 5.0,
+);
 
 interface ToolDefinitionMatrixObservation {
   readonly operation: string;
@@ -197,7 +413,12 @@ interface ToolDefinitionMatrixObservation {
 // This matrix does not claim to prove n8n endpoint behavior. Request/response effects are owned by
 // the positive and adversarial tool-contract suites; Community-version truth is owned by the
 // disposable 2.30.5/2.30.7 compatibility gate. Copy quality beyond the enumerated semantic facts is
-// frozen by the normalized tools/list digest and remains a human/auditor judgment.
+// frozen by the normalized tools/list digest and remains a human/auditor judgment. A future Glama
+// score is also external evidence; this matrix proves the reviewed contract, not the platform's score.
+// Retry eligibility is bound to n8n 2.30.7's official ExecutionService.retry implementation:
+// https://github.com/n8n-io/n8n/blob/n8n%402.30.7/packages/cli/src/executions/execution.service.ts
+// Stop eligibility is bound to the same official service: new, unknown, waiting, and running are
+// stoppable; already-terminal targets are rejected before a successful response.
 function toolDefinitionMatrixViolations(
   name: ToolName,
   observation: ToolDefinitionMatrixObservation,
@@ -214,16 +435,18 @@ function toolDefinitionMatrixViolations(
   if (!DESCRIPTION_PARAMETER_SEMANTICS[name].test(observation.description)) {
     violations.push("tool-specific parameter semantics");
   }
-  if (!/\brequires?\b/i.test(observation.description)) {
+  if (!DESCRIPTION_AUTHORIZATION_SEMANTICS[name].test(observation.description)) {
     violations.push("authorization or configuration boundary");
   }
-  if (!/\breturns?\b/i.test(observation.description)) violations.push("return semantics");
+  if (!DESCRIPTION_RETURN_SEMANTICS[name].test(observation.description)) {
+    violations.push("return semantics");
+  }
 
   return violations;
 }
 
 const APPROVED_TOOL_METADATA_SHA256 =
-  "71b0e4ae040d27e9f15e842ad2552b5523fdd1443f6cd301c1873341389c9652";
+  "83cf07fff5a9651ecd5ea8a750367256f53b0d478af7a93187f11518b516acfc";
 
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
@@ -233,6 +456,13 @@ function canonicalize(value: unknown): unknown {
       .sort(([left], [right]) => left.localeCompare(right, "en-US"))
       .map(([key, entry]) => [key, canonicalize(entry)]),
   );
+}
+
+function toolMetadataSha256(tools: readonly { readonly name: string }[]): string {
+  const normalized = canonicalize(
+    [...tools].sort((left, right) => left.name.localeCompare(right.name, "en-US")),
+  );
+  return createHash("sha256").update(JSON.stringify(normalized)).digest("hex");
 }
 
 async function connectedClient() {
@@ -290,6 +520,7 @@ test("all 44 tools publish conservative annotations from the typed registry", as
       );
       assert.equal(tool.annotations?.idempotentHint, definition.annotations.idempotentHint);
       assert.equal(tool.annotations?.openWorldHint, definition.annotations.openWorldHint);
+      assert.deepEqual(tool.execution, { taskSupport: "forbidden" });
       assert(tool.inputSchema);
       assert(tool.outputSchema);
     }
@@ -317,9 +548,13 @@ test("additive creates and the broad audit publish non-destructive hints without
 test("the complete 44-row definition matrix matches the final MCP surface bidirectionally", async () => {
   const matrixNames = Object.keys(EXPECTED_TOOL_OPERATIONS).sort();
   const semanticNames = Object.keys(DESCRIPTION_PARAMETER_SEMANTICS).sort();
+  const authorizationNames = Object.keys(DESCRIPTION_AUTHORIZATION_SEMANTICS).sort();
+  const returnNames = Object.keys(DESCRIPTION_RETURN_SEMANTICS).sort();
   const expectedNames = [...EXPECTED_TOOLS].sort();
   assert.deepEqual(matrixNames, expectedNames);
   assert.deepEqual(semanticNames, expectedNames);
+  assert.deepEqual(authorizationNames, expectedNames);
+  assert.deepEqual(returnNames, expectedNames);
   assert.deepEqual(
     new Set(Object.values(EXPECTED_TOOL_OPERATIONS)),
     new Set<ToolOperation>(["read-only", "write", "unsafe"]),
@@ -349,6 +584,26 @@ test("the complete 44-row definition matrix matches the final MCP surface bidire
     await client.close();
     await server.close();
   }
+});
+
+test("the Glama v0.2.0 score report partitions all 44 definitions into 40 fixes and four retained 5.0 tools", () => {
+  assert.deepEqual(glamaV020PartitionViolations(GLAMA_V020_SCORE_BY_TOOL), []);
+  assert.equal(GLAMA_V020_PARAMETER_REMEDIATION.length, 40);
+  assert.equal(GLAMA_V020_ALREADY_FIVE.size, 4);
+  assert.deepEqual(
+    [...GLAMA_V020_PARAMETER_REMEDIATION, ...GLAMA_V020_ALREADY_FIVE].sort(),
+    [...EXPECTED_TOOLS].sort(),
+  );
+
+  const swappedScores = {
+    ...GLAMA_V020_SCORE_BY_TOOL,
+    n8n_users_get: 5.0,
+    n8n_users_list: 4.9,
+  } as const;
+  assert(
+    glamaV020PartitionViolations(swappedScores).includes("5.0 membership"),
+    "a same-size 5.0/remediation class swap escaped the report fixture",
+  );
 });
 
 test("every definition-matrix invariant rejects a controlled synthetic mutation", () => {
@@ -394,21 +649,87 @@ test("every definition-matrix invariant rejects a controlled synthetic mutation"
       }).includes("tool-specific parameter semantics"),
       `${name} matrix did not reject removal of its reviewed interaction`,
     );
-    assert(
-      toolDefinitionMatrixViolations(name, {
-        ...validObservation,
-        description: definition.description.replace(/\brequires?\b/giu, "needs"),
-      }).includes("authorization or configuration boundary"),
-      `${name} matrix did not reject removal of its authorization disclosure`,
+    const authorizationMatch = definition.description.match(
+      DESCRIPTION_AUTHORIZATION_SEMANTICS[name],
     );
+    assert(authorizationMatch?.[0], `${name} has no authorization/configuration match to mutate`);
     assert(
       toolDefinitionMatrixViolations(name, {
         ...validObservation,
-        description: definition.description.replace(/\breturns?\b/giu, "emits"),
+        description: definition.description.replace(
+          authorizationMatch[0],
+          "Requires the wrong mode and permission",
+        ),
+      }).includes("authorization or configuration boundary"),
+      `${name} matrix did not reject an authorization/configuration inversion`,
+    );
+
+    const returnMatch = definition.description.match(DESCRIPTION_RETURN_SEMANTICS[name]);
+    assert(returnMatch?.[0], `${name} has no return match to mutate`);
+    assert(
+      toolDefinitionMatrixViolations(name, {
+        ...validObservation,
+        description: definition.description.replace(returnMatch[0], "returns deleted=false"),
       }).includes("return semantics"),
-      `${name} matrix did not reject removal of its return disclosure`,
+      `${name} matrix did not reject a return-value inversion`,
     );
   }
+
+  const expectSemanticInversion = (
+    name: ToolName,
+    from: string,
+    to: string,
+    expectedViolation: string,
+  ): void => {
+    const definition = TOOL_DEFINITIONS.find((candidate) => candidate.name === name);
+    assert(definition, `Missing typed definition for ${name}`);
+    assert(definition.description.includes(from), `${name} lacks the fact selected for inversion`);
+    assert(
+      toolDefinitionMatrixViolations(name, {
+        operation: definition.operation,
+        destructiveHint: definition.annotations.destructiveHint,
+        description: definition.description.replace(from, to),
+      }).includes(expectedViolation),
+      `${name} matrix accepted the controlled inversion: ${from} -> ${to}`,
+    );
+  };
+
+  expectSemanticInversion(
+    "n8n_credentials_delete",
+    "Requires unsafe mode",
+    "Requires read-only mode",
+    "authorization or configuration boundary",
+  );
+  expectSemanticInversion(
+    "n8n_credentials_delete",
+    "deleted=true",
+    "deleted=false",
+    "return semantics",
+  );
+  expectSemanticInversion(
+    "n8n_credentials_delete",
+    "Scan all n8n_credentials_usage pages first",
+    "Skip all n8n_credentials_usage pages first",
+    "tool-specific parameter semantics",
+  );
+  expectSemanticInversion(
+    "n8n_credentials_update",
+    "supply at least one change",
+    "supply no changes",
+    "tool-specific parameter semantics",
+  );
+  expectSemanticInversion(
+    "n8n_workflows_archive",
+    "isArchived=true",
+    "isArchived=false",
+    "return semantics",
+  );
+  expectSemanticInversion(
+    "n8n_workflows_unarchive",
+    "isArchived=false",
+    "isArchived=true",
+    "return semantics",
+  );
 });
 
 test("all 44 tools publish complete agent-facing descriptions for tools and top-level fields", async () => {
@@ -559,23 +880,20 @@ test("the exact normalized tools/list metadata matches the approved semantic con
   const { client, server } = await connectedClient();
   try {
     const listed = await client.listTools();
-    const normalized = canonicalize(
-      [...listed.tools]
-        .sort((left, right) => left.name.localeCompare(right.name, "en-US"))
-        .map(({ name, title, description, inputSchema, outputSchema, annotations }) => ({
-          name,
-          title,
-          description,
-          inputSchema,
-          outputSchema,
-          annotations,
-        })),
-    );
-    const actual = createHash("sha256").update(JSON.stringify(normalized)).digest("hex");
+    const actual = toolMetadataSha256(listed.tools);
     assert.equal(
       actual,
       APPROVED_TOOL_METADATA_SHA256,
       `tools/list metadata changed; review the semantic diff and approve this SHA-256: ${actual}`,
+    );
+
+    const mutatedExecutionContract = listed.tools.map((tool, index) =>
+      index === 0 ? { ...tool, execution: { taskSupport: "required" as const } } : tool,
+    );
+    assert.notEqual(
+      toolMetadataSha256(mutatedExecutionContract),
+      actual,
+      "execution.taskSupport changed without changing the full-surface digest",
     );
   } finally {
     await client.close();

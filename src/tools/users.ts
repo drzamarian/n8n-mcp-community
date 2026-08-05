@@ -79,7 +79,7 @@ export const userTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_users_get",
     title: "Get user",
     description:
-      "Get one user by stable ID or exact email. Use it for targeted verification before an administrative action; use n8n_users_list for discovery. userIdOrEmail chooses ID lookup or an exact percent-encoded email lookup; includeRole=true requests but cannot guarantee role visibility. Requires user-read permission; returns redaction-protected identity and account state without mutation.",
+      "Get one user by stable ID or exact email. userIdOrEmail routes ID-shaped input to ID lookup and other input to an exact percent-encoded email lookup; partial email matching is not used. includeRole=true asks n8n for the global role, but permissions may still hide it. Use n8n_users_list for discovery. Requires user-read permission; returns redaction-protected identity and account state without mutation.",
     operation: "read-only",
     outputDataDescription:
       "One validated user record with id and optional email, firstName, lastName, role, disabled/pending status, and timestamps. Recognized personal values may be redacted.",
@@ -102,7 +102,7 @@ export const userTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_users_create",
     title: "Invite user",
     description:
-      "Create a pending non-owner invitation as an additive write that may send email. Use n8n_users_get first when the address may exist; this is not an update or project-membership tool. role defaults to global:member. Requires unsafe mode plus invite permission. An inconclusive response may still mean a pending user exists; returns delivery state but never the acceptance URL.",
+      "Create a pending invitation as an additive write that may send email. email is the future account login; use n8n_users_get first when it may exist. role is a global account role, not project membership, and omission selects global:member; owner invitations are rejected. Requires unsafe mode plus invite permission. An inconclusive response may still mean a pending user exists; returns delivery state but never the acceptance URL.",
     operation: "unsafe",
     outputDataDescription:
       "Confirmed invitation outcome with userCreated, invited, userId, email, requestedRole, roleConfirmedByResponse, emailSent, delivery, and inviteAcceptUrlReturned=false. Acceptance URLs are never returned.",
@@ -155,7 +155,7 @@ export const userTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_users_delete",
     title: "Delete user",
     description:
-      "Permanently delete one API-eligible user. Use n8n_users_get to verify the target first; use read tools for inspection. userId accepts no transfer target, so ownership handling remains entirely with n8n. Requires unsafe mode plus user-delete permission; returns the request-bound ID with deleted=true and provides no rollback claim.",
+      "Permanently delete one API-eligible user. userId must be the stable ID from n8n_users_list or get; an email address is not accepted. The input has no transfer target, so workflow or credential ownership handling remains entirely with n8n. Verify the target with get first. Requires unsafe mode plus user-delete permission; returns the request-bound userId with deleted=true and provides no rollback claim.",
     operation: "unsafe",
     outputDataDescription:
       "Object with the validated input userId and deleted=true. The tool makes no ownership-transfer claim and accepts n8n's successful empty response.",

@@ -85,7 +85,7 @@ export const utilityTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_health",
     title: "Check n8n health",
     description:
-      "Perform one redirect-free same-origin /healthz request with a 10-second timeout. Use it for HTTP reachability only; use an authenticated read tool such as n8n_workflows_list to validate API-key capability. The shared client still requires configured URL/key values, but no workflow data is read or changed. Returns ok=true and the successful status, never the upstream body.",
+      "Perform one redirect-free same-origin /healthz request with a 10-second timeout. This tool accepts no arguments and requires the configured n8n URL and API key; remote plaintext HTTP also requires N8N_ALLOW_INSECURE_HTTP=1. Use it for HTTP reachability, then use n8n_workflows_list to test API-key capability. No workflow data is read or changed. Returns ok=true and the successful status, never the upstream body.",
     operation: "read-only",
     outputDataDescription:
       "Object with ok=true and the successful n8n health endpoint HTTP status. It proves bounded reachability, not authenticated Public API capability.",
@@ -145,7 +145,7 @@ export const utilityTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_audit_generate",
     title: "Generate security audit",
     description:
-      "Run n8n's broad, non-destructive instance security scan. Use it for an owner-approved audit; use n8n_introspect for local analysis of one workflow. Omitting categories lets n8n choose its complete default, while daysAbandonedWorkflow changes only the inactive-workflow threshold. Requires unsafe mode and owner-authorized API access; returns a sanitized but untrusted report without changing instance configuration.",
+      "Run n8n's broad, non-destructive instance security scan. Omit categories to use n8n's complete default, or supply the exact risk areas to include. daysAbandonedWorkflow is independent: it changes only the inactive-workflow age threshold and does not select categories. Use n8n_introspect for one workflow. Requires unsafe mode and owner-authorized API access; returns a sanitized but untrusted report without changing configuration.",
     operation: "unsafe",
     preserveValidatedRootRecordValues: true,
     outputDataDescription:
@@ -188,7 +188,7 @@ export const utilityTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_search_workflows",
     title: "Search workflows",
     description:
-      "Search one workflow page locally with a case-insensitive substring. Use it for name, node-type, or tag-name matching; use n8n_workflows_list for an unsearched API page. searchIn selects local fields after active filters upstream; cursor and limit select one page, not a global index, so continue nextCursor for coverage. Requires workflow-list permission; returns at most 50 value-free matches and explicit scan state.",
+      "Search one workflow page for a case-insensitive substring. query is matched locally only in the fields named by searchIn; active filters upstream first. Omit cursor for page one, then keep query, searchIn, active, and limit unchanged when passing nextCursor. This is not a global index; use n8n_workflows_list for an unsearched page. Requires workflow-list permission; returns at most 50 value-free matches and explicit scan state.",
     operation: "read-only",
     outputDataDescription:
       "Object with query, workflowsExamined, matches (up to 50 identity/state records with matchedIn scopes), nextCursor, scanComplete, and truncated. It covers one requested workflow page, not a global index.",
@@ -261,7 +261,7 @@ export const utilityTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_get_node_docs",
     title: "Get node documentation",
     description:
-      "Return one immutable bundled reference selected by the four-value node key. Use it for offline orientation; use n8n_list_node_types to inventory observed types and official docs for any other node. Requires no n8n URL, API key, network, or elevated mode; it never follows the included URL. Returns source/fetched provenance, canonical type, title, summary, guidance, and official URL.",
+      "Return one immutable bundled reference. node is an exact local key—webhook, code, http-request, or if—not an arbitrary n8n node-type string. Use n8n_list_node_types to inventory observed types and official docs for anything else. Requires no n8n URL, API key, network, or elevated mode; it never follows the included URL. Returns source/fetched provenance, canonical type, title, summary, guidance, and official URL.",
     operation: "read-only",
     outputDataDescription:
       "Bundled reference with source=bundled_offline_reference, fetched=false, node type, title, concise summary/guidance, and official documentation URL. No network fetch occurs.",
@@ -281,7 +281,7 @@ export const utilityTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_list_node_types",
     title: "List observed node types",
     description:
-      "Inventory node-type strings observed across bounded workflow pages. Use it for usage evidence, not installed availability; use n8n_get_node_docs for bundled references or n8n_community_packages_list for package metadata. cursor selects the start, maxPages bounds continuation, and active filters upstream; a complete result requires starting at the first page and reaching the end. Requires workflow-list permission; returns counts and exact coverage under 30-second/20,000-node budgets.",
+      "Inventory node types observed across workflow pages; this proves usage, not installation. Omit cursor to start at page one. maxPages limits how many pages this call follows; active and limit apply to every page, so keep them unchanged when continuing from nextCursor. Complete coverage requires starting at page one and reaching the end. Use n8n_get_node_docs for bundled references. Requires workflow-list permission; returns counts and exact coverage, capped at 30 seconds or 20,000 nodes.",
     operation: "read-only",
     outputDataDescription:
       "Observed-workflow inventory with scope/availabilityStatement, up to 500 sorted types and counts, page/workflow/node counters, coverage booleans, nextCursor, resultComplete, truncated, and omittedTypeCount.",
@@ -457,7 +457,7 @@ export const utilityTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_community_packages_list",
     title: "List community packages",
     description:
-      "List bounded metadata for installed n8n community packages. Use it for package inventory; use n8n_list_node_types for types actually observed in workflows. This zero-input call retains at most 100 of the endpoint's records and reports exact total/omitted counts; it does not download or inspect package contents. Requires package-list permission, never installs, updates, or removes packages, and returns untrusted metadata with author emails redacted.",
+      "List bounded metadata for installed n8n community packages. This call accepts no arguments, filters, cursor, or limit; it keeps at most 100 endpoint records and reports exact omissions. Use n8n_list_node_types for types observed in workflows. It does not download or inspect contents. Requires package-list permission, never installs, updates, or removes packages, and returns untrusted metadata with author emails redacted.",
     operation: "read-only",
     outputDataDescription:
       "Object with data (at most 100 package metadata records), totalCount, truncated, and exact omittedCount. Records may include packageName, installedVersion, author metadata, and timestamps; author emails are redacted.",

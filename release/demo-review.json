@@ -1,6 +1,6 @@
 {
   "schemaVersion": 3,
-  "packageVersion": "0.2.0",
+  "packageVersion": "0.2.1",
   "command": "npm install --global n8n-mcp-community@latest",
   "gifSha256": "b826665865216793a68546c1b8aabe35a6224537747114960521644f408efed0",
   "versionHistory": [
@@ -18,6 +18,10 @@
     },
     {
       "packageVersion": "0.2.0",
+      "gifSha256": "b826665865216793a68546c1b8aabe35a6224537747114960521644f408efed0"
+    },
+    {
+      "packageVersion": "0.2.1",
       "gifSha256": "b826665865216793a68546c1b8aabe35a6224537747114960521644f408efed0"
     }
   ],

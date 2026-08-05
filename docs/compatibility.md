@@ -18,7 +18,7 @@ release evidence from the client-matrix gates that remain open.
 
 The package declares Node.js `>=22.0.0`. That engine range is an acceptance
 floor, not evidence that every later major has completed the release matrix.
-The supported release lines for v0.2.0 are Node.js 22 and 24.
+The supported release lines for v0.2.1 are Node.js 22 and 24.
 
 ## Upgrading from 0.1.x
 
@@ -36,7 +36,7 @@ update and rollback steps.
 
 ## n8n Community Edition
 
-The v0.2.0 floor candidate is n8n Community Edition 2.30.5, with 2.30.7 as the
+The v0.2.1 floor candidate is n8n Community Edition 2.30.5, with 2.30.7 as the
 current comparison target. The compiled public 44-tool candidate passed fresh,
 disposable lifecycles on both versions with synthetic fixtures, API-key
 revocation, resource cleanup, enforced candidate-process egress isolation, and
@@ -48,7 +48,7 @@ browser cookies, interactive `/rest` routes, paid project transfers, arbitrary
 workflow execution, or runtime node-catalog downloads.
 
 `n8n_credentials_list` is supported only from n8n 2.30.5 onward. Project
-selectors are intentionally absent because v0.2.0 does not present paid project
+selectors are intentionally absent because v0.2.1 does not present paid project
 capabilities as Community features. Other tools may also depend on endpoint
 availability and the permissions assigned to the API key; an HTTP 403 does not
 by itself mean the endpoint is absent.
@@ -87,7 +87,7 @@ surface.
 
 ## Deliberate exclusions
 
-v0.2.0 does not include:
+v0.2.1 does not include:
 
 - folders or data tables;
 - beta evaluation endpoints;
