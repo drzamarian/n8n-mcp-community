@@ -103,11 +103,38 @@ const frames = [
 ];
 
 function escapeXml(value) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
+  return String(value).replace(/[&<>"]/g, (character) => {
+    switch (character) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      default:
+        return character;
+    }
+  });
+}
+
+function renderAttributes(attributes) {
+  return Object.entries(attributes)
+    .map(([name, value]) => " " + name + '="' + escapeXml(value) + '"')
+    .join("");
+}
+
+function renderElement(name, attributes, children = "") {
+  return "<" + name + renderAttributes(attributes) + ">" + children + "</" + name + ">";
+}
+
+function renderEmptyElement(name, attributes) {
+  return "<" + name + renderAttributes(attributes) + "/>";
+}
+
+function renderText(attributes, value) {
+  return renderElement("text", attributes, escapeXml(value));
 }
 
 function renderSteps(activeStep) {
@@ -120,7 +147,28 @@ function renderSteps(activeStep) {
       const stroke = active ? "#60a5fa" : complete ? "#34d399" : "#334155";
       const text = active ? "#ffffff" : complete ? "#6ee7b7" : "#94a3b8";
       const x = 636 + index * 162;
-      return `<rect x="${x}" y="83" width="140" height="38" rx="19" fill="${fill}" stroke="${stroke}"/><text x="${x + 70}" y="108" text-anchor="middle" fill="${text}" font-size="17" font-weight="700">${step} ${label}</text>`;
+      return (
+        renderEmptyElement("rect", {
+          x,
+          y: 83,
+          width: 140,
+          height: 38,
+          rx: 19,
+          fill,
+          stroke,
+        }) +
+        renderText(
+          {
+            x: x + 70,
+            y: 108,
+            "text-anchor": "middle",
+            fill: text,
+            "font-size": 17,
+            "font-weight": 700,
+          },
+          step + " " + label,
+        )
+      );
     })
     .join("");
 }
@@ -138,27 +186,106 @@ function renderFrame(frame) {
       const y = 314 + index * 68;
       const codeBox =
         kind === "code"
-          ? `<rect x="100" y="${y - 39}" width="1000" height="56" rx="10" fill="#111a2d" stroke="#26344f"/>`
+          ? renderEmptyElement("rect", {
+              x: 100,
+              y: y - 39,
+              width: 1000,
+              height: 56,
+              rx: 10,
+              fill: "#111a2d",
+              stroke: "#26344f",
+            })
           : "";
-      return `${codeBox}<text x="126" y="${y}" fill="${colors[kind]}" font-size="${kind === "code" ? 27 : 29}" font-weight="${kind === "success" || kind === "warning" ? 700 : 500}">${escapeXml(value)}</text>`;
+      return (
+        codeBox +
+        renderText(
+          {
+            x: 126,
+            y,
+            fill: colors[kind],
+            "font-size": kind === "code" ? 27 : 29,
+            "font-weight": kind === "success" || kind === "warning" ? 700 : 500,
+          },
+          value,
+        )
+      );
     })
     .join("");
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
-  <style>text { font-family: Menlo, "DejaVu Sans Mono", monospace; }</style>
-  <rect width="1200" height="675" fill="#080d18"/>
-  <rect x="50" y="40" width="1100" height="595" rx="18" fill="#0c1323" stroke="#26344f" stroke-width="2"/>
-  <rect x="50" y="40" width="1100" height="58" rx="18" fill="#111a2d"/>
-  <rect x="50" y="80" width="1100" height="18" fill="#111a2d"/>
-  <circle cx="84" cy="69" r="7" fill="#fb7185"/><circle cx="108" cy="69" r="7" fill="#fbbf24"/><circle cx="132" cy="69" r="7" fill="#34d399"/>
-  <text x="164" y="77" fill="#dbeafe" font-size="21" font-weight="700">n8n MCP Community</text>
-  <text x="1092" y="77" text-anchor="end" fill="#64748b" font-size="17">MCP · stdio</text>
-  ${renderSteps(frame.step)}
-  <text x="100" y="225" fill="#ffffff" font-size="42" font-weight="700">${escapeXml(frame.title)}</text>
-  ${lines}
-  <line x1="100" y1="555" x2="1100" y2="555" stroke="#26344f"/>
-  <text x="100" y="592" fill="#64748b" font-size="18">Synthetic demo · no real workflow data</text>
-</svg>`;
+  const children = [
+    renderElement("style", {}, 'text { font-family: Menlo, "DejaVu Sans Mono", monospace; }'),
+    renderEmptyElement("rect", { width: 1200, height: 675, fill: "#080d18" }),
+    renderEmptyElement("rect", {
+      x: 50,
+      y: 40,
+      width: 1100,
+      height: 595,
+      rx: 18,
+      fill: "#0c1323",
+      stroke: "#26344f",
+      "stroke-width": 2,
+    }),
+    renderEmptyElement("rect", {
+      x: 50,
+      y: 40,
+      width: 1100,
+      height: 58,
+      rx: 18,
+      fill: "#111a2d",
+    }),
+    renderEmptyElement("rect", {
+      x: 50,
+      y: 80,
+      width: 1100,
+      height: 18,
+      fill: "#111a2d",
+    }),
+    renderEmptyElement("circle", { cx: 84, cy: 69, r: 7, fill: "#fb7185" }),
+    renderEmptyElement("circle", { cx: 108, cy: 69, r: 7, fill: "#fbbf24" }),
+    renderEmptyElement("circle", { cx: 132, cy: 69, r: 7, fill: "#34d399" }),
+    renderText(
+      { x: 164, y: 77, fill: "#dbeafe", "font-size": 21, "font-weight": 700 },
+      "n8n MCP Community",
+    ),
+    renderText(
+      {
+        x: 1092,
+        y: 77,
+        "text-anchor": "end",
+        fill: "#64748b",
+        "font-size": 17,
+      },
+      "MCP · stdio",
+    ),
+    renderSteps(frame.step),
+    renderText(
+      { x: 100, y: 225, fill: "#ffffff", "font-size": 42, "font-weight": 700 },
+      frame.title,
+    ),
+    lines,
+    renderEmptyElement("line", {
+      x1: 100,
+      y1: 555,
+      x2: 1100,
+      y2: 555,
+      stroke: "#26344f",
+    }),
+    renderText(
+      { x: 100, y: 592, fill: "#64748b", "font-size": 18 },
+      "Synthetic demo · no real workflow data",
+    ),
+  ].join("");
+
+  return renderElement(
+    "svg",
+    {
+      xmlns: "http://www.w3.org/2000/svg",
+      width: 1200,
+      height: 675,
+      viewBox: "0 0 1200 675",
+    },
+    children,
+  );
 }
 
 function run(command, args, options = {}) {
