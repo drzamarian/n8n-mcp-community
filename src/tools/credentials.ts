@@ -81,7 +81,7 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_credentials_create",
     title: "Create credential",
     description:
-      "Create and persist one credential as an additive write. Use n8n_credentials_schema first; use n8n_credentials_update when the credential exists. type selects the schema the caller should use to construct data, and isResolvable is sent only when supplied. Requires write/unsafe mode plus credential-create permission. Secret values belong only in input and are excluded from logs and output; returns metadata only.",
+      "Create and persist one credential as an additive write. First call n8n_credentials_schema with the planned type, then build data from its field contract; name is only the stored label. isResolvable is forwarded only when supplied. Use n8n_credentials_update for an existing credential. Requires write/unsafe mode plus create permission. Secret values belong only in data input and are excluded from logs and output; returns metadata only.",
     operation: "write",
     outputDataDescription:
       "Validated credential metadata with id, name, type, optional timestamps, managed/global flags, and resolvability. Stored credential values are never returned.",
@@ -115,7 +115,7 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_credentials_delete",
     title: "Delete credential",
     description:
-      "Permanently delete one stored credential, which can break every referencing workflow. Use n8n_credentials_usage across all pages first; use n8n_credentials_update when replacement is sufficient. No secret or rollback is returned. Requires unsafe mode plus credential-delete permission; returns the request-bound ID with deleted=true.",
+      "Permanently delete one stored credential, which can break every referencing workflow. credentialId must be the stable ID from n8n_credentials_list, get, or create; a credential name or type is not accepted. Scan all n8n_credentials_usage pages first, or update when replacement is enough. No secret or rollback is returned. Requires unsafe mode plus credential-delete permission; returns the request-bound credentialId with deleted=true.",
     operation: "unsafe",
     outputDataDescription:
       "Object with the validated input credentialId and deleted=true. Identity is bound to the request because n8n does not consistently return the deleted credential ID.",
@@ -131,7 +131,7 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_credentials_schema",
     title: "Get credential schema",
     description:
-      "Get n8n's Public API field schema for one credential type. Use it before n8n_credentials_create or replacement-data updates; use n8n_credentials_get for stored metadata. credentialType is a route selector, not a stored credential ID, so this call never reads credential values. Requires schema-read permission; returns the validated upstream field contract without testing credentials.",
+      "Get n8n's Public API field contract for one credential type. credentialType is the public type name used by create/update, not a stored credential ID, name, or secret. Its result tells the caller which keys belong in data; it does not read or test a stored credential. Use n8n_credentials_get for stored metadata. Requires schema-read permission; returns the validated upstream field contract.",
     operation: "read-only",
     outputDataDescription:
       "Validated Public API schema object for the requested credential type. It describes accepted fields and constraints but never contains stored credential values.",
@@ -149,7 +149,7 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_credentials_list",
     title: "List credentials",
     description:
-      "List one Public API page of credential metadata using the endpoint supported from n8n Community 2.30.5. Use it for discovery; use n8n_credentials_get when the ID is known. cursor resumes a prior page and limit bounds that single request; this call never auto-paginates. Requires credential-list permission; returns metadata and nextCursor, never stored values.",
+      "List one Public API page of credential metadata; the endpoint is supported from n8n Community 2.30.5. Omit cursor for page one. For later pages, pass nextCursor back unchanged; limit sizes only that request, and the tool never auto-paginates. Use n8n_credentials_get when an ID is known. Requires credential-list permission; returns metadata and nextCursor, never stored values.",
     operation: "read-only",
     outputDataDescription:
       "Object with data (up to 100 credential metadata records) and nextCursor (string or null). Records contain allowlisted metadata only; credential values are rejected.",
@@ -168,7 +168,7 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_credentials_get",
     title: "Get credential",
     description:
-      "Get public metadata for one stored credential by stable ID. Use it for a known target; use n8n_credentials_list for discovery and n8n_credentials_schema for type fields. credentialId identifies stored metadata only: the endpoint and output contract do not retrieve credential values or test the external service. Requires credential-read permission; returns validated identity, type, flags, and timestamps.",
+      "Get public metadata for one stored credential. credentialId is the stable ID from n8n_credentials_list or create, not its name, type, or secret data. Use n8n_credentials_schema for type fields. The endpoint does not retrieve credential values or test the external service. Requires credential-read permission; returns validated identity, type, flags, and timestamps.",
     operation: "read-only",
     outputDataDescription:
       "One validated credential metadata record with id, name, type, optional timestamps, managed/global flags, and resolvability; no stored credential values.",
@@ -182,7 +182,7 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_credentials_update",
     title: "Update credential",
     description:
-      "Update selected metadata or values on one stored credential, potentially breaking dependent workflows. Use n8n_credentials_schema for data fields and n8n_credentials_create for a new credential. Supply at least one field; changing type also requires data. isPartialData=false treats data as replacement, while true requests a partial merge. Requires write/unsafe mode plus update permission; returns metadata without secret values.",
+      "Update one stored credential, potentially breaking dependent workflows. credentialId selects the record; omit fields to keep them and supply at least one change. If type changes, data is also required and must match n8n_credentials_schema. With data, isPartialData=false replaces the saved field set, while true requests a partial merge. Use create for a new credential. Requires write/unsafe mode plus update permission; returns metadata without secret values.",
     operation: "write",
     outputDataDescription:
       "Updated credential metadata with id, name, type, optional timestamps, managed/global flags, and resolvability. Supplied credential values are never echoed.",
@@ -250,7 +250,7 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_credentials_test",
     title: "Test credential",
     description:
-      "Test one stored credential by allowing n8n to contact its external service, which receives and may log the attempt. Use n8n_credentials_get for metadata-only inspection and do not call this when network contact is unwanted. Requires unsafe mode plus test permission; returns only the target-bound OK/Error outcome and withholds the upstream diagnostic message because it may contain secrets.",
+      "Test one already stored credential by allowing n8n to contact its external service, which receives and may log the attempt. credentialId is the stable ID from n8n_credentials_list or get; inline credential data, names, and types are not accepted. Use get for metadata-only inspection and skip this tool when network contact is unwanted. Requires unsafe mode plus test permission; returns only the target-bound OK/Error outcome and withholds the upstream diagnostic message.",
     operation: "unsafe",
     outputDataDescription:
       "Object with credentialId, status OK or Error, and a server-authored message that discloses only whether the test succeeded. The untrusted upstream diagnostic message is never returned.",
@@ -274,7 +274,7 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_credentials_usage",
     title: "Find credential usage",
     description:
-      "Scan one bounded workflow page for exact references to a credential ID. Use it before n8n_credentials_update or deletion; use n8n_credentials_get for metadata only. active filters upstream, cursor resumes the scan, and unresolved legacy references are counted but never matched; coverage is complete only when nextCursor is null. Requires workflow-list permission; returns bounded workflow/node matches and omission counts.",
+      "Scan one workflow page for exact references to a credential. credentialId is the stable ID from n8n_credentials_list or get. Omit cursor for page one; keep credentialId, active, and limit unchanged when passing nextCursor. Unresolved legacy references are counted but never matched, and coverage is complete only when nextCursor is null. Use this before update/delete. Requires workflow-list permission; returns bounded workflow/node matches and omission counts.",
     operation: "read-only",
     outputDataDescription:
       "Object with credentialId, workflowsExamined, matchingWorkflowCount, workflows with at most 200 total node details and 20 per workflow, nextCursor, scanComplete, truncation counts, referencesScanned, and referencesUnresolved.",

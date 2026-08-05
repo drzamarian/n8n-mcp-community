@@ -18,7 +18,7 @@ maintainer approval.
 
 ## Accepted backlog proposal
 
-Execution annotations remain a coherent two-tool proposal outside v0.2.0:
+Execution annotations remain a coherent two-tool proposal outside v0.2.1:
 
 - `n8n_executions_get_tags`
 - `n8n_executions_update_tags`

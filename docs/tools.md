@@ -431,19 +431,23 @@ Asks n8n to retry one eligible saved execution.
 
 ## n8n_executions_stop
 
-Stops one currently running execution.
+Stops one execution whose state is `new`, `unknown`, `waiting`, or `running`.
 
 - **Policy and endpoint:** unsafe; `POST /executions/{executionId}/stop`;
   `RO=false, D=true, I=false, OW=true`.
 - **Requirements:** Requires mode `unsafe` and API-key permission to stop the execution.
-- **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Only currently stoppable executions succeed; completed external effects are not rolled back.
+- **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Stoppable
+  states are `new`, `unknown`, `waiting`, and `running`; completed external
+  effects are not rolled back.
 - **Inputs:** required `executionId`.
 - **Returns:** the validated input ID, a `stopped` boolean derived from the
-  validated upstream `status`/`finished` body fields (n8n answers HTTP 200 even
-  for executions that already finished, so HTTP success alone never asserts a
-  stop), a `state` of `stopped`, `already_finished`, or `unknown`, passthrough
-  `finished` when present, and allowlisted upstream status/timestamp when
-  present. Identity never depends on the upstream body.
+  validated upstream `status`/`finished` body fields. Supported n8n versions
+  reject an already-terminal target. For any successful body, only `canceled`
+  maps to `stopped`; another terminal status maps defensively to
+  `already_finished`, and an unclear body maps to `unknown`. HTTP success alone
+  never asserts a stop. The tool also returns `finished` when present and
+  allowlisted upstream status/timestamp metadata. Identity never depends on the
+  upstream body.
 - **Failures and privacy:** a denied mode issues zero requests. n8n
   may reject a terminal, missing, or non-stoppable execution; stopping may leave
   external side effects already performed by earlier nodes.
@@ -771,10 +775,14 @@ Performs a short same-origin health check against the configured n8n instance.
 
 - **Policy and endpoint:** read-only; `GET /healthz` outside the Public API
   prefix with a 10-second timeout; `RO=true, D=false, I=true, OW=true`.
-- **Requirements:** Requires valid connected configuration because the shared HTTP boundary supplies the API key, even though `/healthz` itself is a root health route.
+- **Requirements:** Requires valid connected configuration because the shared
+  HTTP boundary supplies the API key, even though `/healthz` itself is a root
+  health route. A non-loopback plaintext HTTP URL also requires
+  `N8N_ALLOW_INSECURE_HTTP=1`.
 - **Community Edition:** Verified on Community 2.30.5 and 2.30.7. It proves HTTP reachability only, not workflow, queue, or credential health.
 - **Inputs:** none. Connected configuration still requires `N8N_API_URL` and
-  `N8N_API_KEY` because the shared client owns the request boundary.
+  `N8N_API_KEY` because the shared client owns the request boundary; the
+  plaintext-HTTP exception above remains explicit opt-in.
 - **Returns:** `ok: true` and the successful HTTP status.
 - **Failures and privacy:** invalid configuration, DNS/TLS/connectivity failure,
   redirect, timeout, oversize, or non-success status returns a fixed sanitized

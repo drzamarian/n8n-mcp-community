@@ -108,7 +108,7 @@ export const executionTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_executions_get",
     title: "Get execution",
     description:
-      "Get metadata for one saved execution by stable ID. Use it for a known target; use n8n_executions_list to discover or filter executions. includeData changes only whether n8n is asked about payload presence—the tool never returns node inputs or outputs. Requires permission to read the execution; returns identity, status, timing, retry fields, and value-free dataPolicy.",
+      "Get metadata for one saved execution. executionId is the execution record ID from n8n_executions_list, not its workflowId. includeData=true asks n8n whether saved payload data exists, but the MCP still withholds every node input and output; false skips that request detail. Use list for discovery. Requires execution-read permission; returns identity, status, timing, retry fields, and value-free dataPolicy.",
     operation: "read-only",
     outputDataDescription:
       "One allowlisted execution metadata record with identity, status, mode, workflow/timing/retry fields when present, and value-free dataPolicy. Raw execution values are never returned.",
@@ -139,7 +139,7 @@ export const executionTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_executions_delete",
     title: "Delete execution",
     description:
-      "Permanently delete one saved execution and its retained history. Use it only after n8n_executions_get confirms the target; use read tools for inspection. The server provides no recovery or rollback. Requires unsafe mode plus execution-delete permission; returns the request-bound ID with deleted=true.",
+      "Permanently delete one saved execution and its retained history. executionId must be the execution record ID from n8n_executions_list or get; a workflow ID is not accepted. Confirm the target with get first. The server provides no recovery or rollback. Requires unsafe mode plus execution-delete permission; returns the request-bound executionId with deleted=true.",
     operation: "unsafe",
     outputDataDescription:
       "Object with the validated input executionId and deleted=true. Identity is bound to the request and does not rely on an upstream response body.",
@@ -155,7 +155,7 @@ export const executionTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_executions_retry",
     title: "Retry execution",
     description:
-      "Retry one eligible saved execution, potentially repeating every external effect already reached. Use it only after n8n_executions_get review; use n8n_executions_stop for a running execution. loadWorkflow=true uses the currently saved workflow, while false uses the original execution snapshot. Requires unsafe mode and retry permission; returns metadata without payload values.",
+      "Retry one saved execution that has retry data and did not finish successfully; n8n rejects queued/new executions and successful finished executions. executionId comes from n8n_executions_get or list. loadWorkflow=true uses the currently saved workflow, while false uses the original execution snapshot. A retry may repeat earlier external effects; use stop for a running execution. Requires unsafe mode and retry permission; returns metadata without payload values.",
     operation: "unsafe",
     outputDataDescription:
       "Allowlisted metadata for the new or retried execution, including scalar identity/status/timing/retry fields when supplied by n8n; raw execution values are omitted.",
@@ -182,7 +182,7 @@ export const executionTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_executions_stop",
     title: "Stop execution",
     description:
-      "Request cancellation of one running execution without rolling back completed external effects. Use n8n_executions_get for inspection or n8n_executions_retry for an eligible saved failure. A successful HTTP response alone does not prove cancellation. Requires unsafe mode plus stop permission; returns stopped, already_finished, or unknown from validated state.",
+      "Request cancellation of one stoppable execution: new, unknown, waiting, or running. executionId must be its record ID from n8n_executions_list or get, not a workflow ID. n8n rejects an execution that is already terminal. From a successful response, canceled maps to stopped, another terminal status maps to already_finished, and an unclear body maps to unknown; HTTP 200 alone never proves cancellation. Completed external effects remain. Requires unsafe mode and stop permission; returns the mapped state.",
     operation: "unsafe",
     outputDataDescription:
       "Object with executionId, stopped, state (stopped, already_finished, or unknown), and optional finished/status/stoppedAt metadata. HTTP success alone never asserts that a stop occurred.",
@@ -201,10 +201,10 @@ export const executionTools: readonly ToolDefinition[] = Object.freeze([
             path: `/executions/${pathSegment(input.executionId)}/stop`,
           }),
         );
-      // n8n answers 200 even when the execution already finished in the race between the
-      // operator's check and this call. Derive the outcome from the validated body instead of
-      // asserting a stop that never happened: only a "canceled" terminal state means we stopped
-      // it; other terminal states mean it finished on its own; anything else is unknown.
+      // Supported n8n versions normally reject an already-terminal target. For any successful
+      // body, derive the outcome instead of trusting HTTP 200: only "canceled" proves this call
+      // stopped it; another terminal state maps defensively to already_finished; anything else
+      // is unknown.
       const normalizedStatus = upstream.status?.toLowerCase();
       const outcome =
         normalizedStatus === "canceled"

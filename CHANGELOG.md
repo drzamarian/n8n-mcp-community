@@ -6,6 +6,25 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.1] - Frozen release candidate
+
+Version 0.2.1 is a frozen release candidate. Availability is established only
+by matching npm provenance, GitHub Release assets and signatures, and MCP
+Registry readbacks; this immutable entry is not rewritten after publication.
+
+### Changed
+
+- Forty tool definitions now state their exact selector semantics, pagination
+  behavior, authorization or configuration boundary, side effects, and return
+  contract in shorter agent-facing language. The four definitions already
+  rated 5.0 by Glama remain unchanged.
+- The durable 44-tool definition matrix now checks parameter, authorization,
+  configuration, return, annotation, and task-support invariants independently.
+  Controlled mutations prove that every invariant rejects semantic drift.
+- Execution-stop documentation now names every stoppable state and the
+  terminal-race mapping. Health documentation now states the explicit opt-in
+  required for remote plaintext HTTP.
+
 ## [0.2.0] - Frozen release candidate
 
 Version 0.2.0 is a frozen release candidate. Availability is established only
@@ -285,6 +304,7 @@ Registry readbacks; this immutable entry is not rewritten after publication.
   publishable history; authenticated public release receipts remain supported.
 
 [Unreleased]: #unreleased
+[0.2.1]: #021---frozen-release-candidate
 [0.2.0]: #020---frozen-release-candidate
 [0.1.4]: #014---frozen-release-candidate
 [0.1.3]: #013---frozen-release-candidate
