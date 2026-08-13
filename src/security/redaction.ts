@@ -59,11 +59,18 @@ export interface SanitizedOutput {
 
 export interface SanitizationOptions {
   readonly preserveValidatedRootRecordValues?: boolean;
+  readonly maxArrayLength?: number;
+  readonly maxDepth?: number;
+  readonly maxNodes?: number;
+  readonly maxObjectEntries?: number;
+  readonly maxStringInputLength?: number;
+  readonly maxStringOutputLength?: number;
 }
 
 export interface SanitizationResult {
   readonly output: SanitizedOutput;
   readonly structurallyReduced: boolean;
+  readonly sizeReduced: boolean;
 }
 
 export class OutputLimitError extends Error {
@@ -77,6 +84,61 @@ interface SanitizationState {
   nodes: number;
   redacted: boolean;
   structurallyReduced: boolean;
+  sizeReduced: boolean;
+  limits: SanitizationLimits;
+}
+
+interface SanitizationLimits {
+  readonly arrayLength: number;
+  readonly depth: number;
+  readonly nodes: number;
+  readonly objectEntries: number;
+  readonly stringInputLength: number;
+  readonly stringOutputLength: number;
+}
+
+const DEFAULT_SANITIZATION_LIMITS: SanitizationLimits = Object.freeze({
+  arrayLength: 1_000,
+  depth: 20,
+  nodes: 20_000,
+  objectEntries: 1_000,
+  stringInputLength: 131_072,
+  stringOutputLength: 32_768,
+});
+
+function resolvedLimit(value: number | undefined, fallback: number, name: string): number {
+  if (value === undefined) return fallback;
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new RangeError(`${name} must be a positive safe integer.`);
+  }
+  return value;
+}
+
+function sanitizationLimits(options: SanitizationOptions): SanitizationLimits {
+  return {
+    arrayLength: resolvedLimit(
+      options.maxArrayLength,
+      DEFAULT_SANITIZATION_LIMITS.arrayLength,
+      "maxArrayLength",
+    ),
+    depth: resolvedLimit(options.maxDepth, DEFAULT_SANITIZATION_LIMITS.depth, "maxDepth"),
+    nodes: resolvedLimit(options.maxNodes, DEFAULT_SANITIZATION_LIMITS.nodes, "maxNodes"),
+    objectEntries: resolvedLimit(
+      options.maxObjectEntries,
+      DEFAULT_SANITIZATION_LIMITS.objectEntries,
+      "maxObjectEntries",
+    ),
+    stringInputLength: resolvedLimit(
+      options.maxStringInputLength,
+      DEFAULT_SANITIZATION_LIMITS.stringInputLength,
+      "maxStringInputLength",
+    ),
+    stringOutputLength: resolvedLimit(
+      options.maxStringOutputLength,
+      DEFAULT_SANITIZATION_LIMITS.stringOutputLength,
+      "maxStringOutputLength",
+    ),
+  };
 }
 
 function compareStrings(left: string, right: string): number {
@@ -138,14 +200,19 @@ function looksLikeOpaquePathSegment(value: string): boolean {
 function sanitizeString(
   value: string,
   structuralKey?: string,
-): { value: string; redacted: boolean } {
-  const boundedInput = value.length > 131_072 ? value.slice(0, 131_072) : value;
+  limits = DEFAULT_SANITIZATION_LIMITS,
+): { value: string; redacted: boolean; sizeReduced: boolean } {
+  const boundedInput =
+    value.length > limits.stringInputLength ? value.slice(0, limits.stringInputLength) : value;
   const normalizedInput = boundedInput.normalize("NFKC");
   let output = normalizedInput
-    .slice(0, 131_072)
+    .slice(0, limits.stringInputLength)
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g, "");
   let redacted =
-    boundedInput !== value || normalizedInput.length > 131_072 || output !== boundedInput;
+    boundedInput !== value ||
+    normalizedInput.length > limits.stringInputLength ||
+    output !== boundedInput;
+  let sizeReduced = boundedInput !== value || normalizedInput.length > limits.stringInputLength;
   for (const [pattern, replacement] of HIGH_CONFIDENCE_CREDENTIAL_REDACTIONS) {
     pattern.lastIndex = 0;
     const filtered = output.replace(pattern, replacement);
@@ -168,7 +235,7 @@ function sanitizeString(
     (structuralKey === "id" && SAFE_LITERAL_SECRET_FINDING_ID_VALUE.test(output)) ||
     ((structuralKey === "documentationUrl" || structuralKey === "officialUrl") &&
       isOfficialN8nDocumentationUrl(output));
-  if (validatedInternalValueIsSafe) return { value: output, redacted };
+  if (validatedInternalValueIsSafe) return { value: output, redacted, sizeReduced };
   for (const [pattern, replacement] of MANDATORY_VALUE_REDACTIONS) {
     pattern.lastIndex = 0;
     const filtered = output.replace(pattern, replacement);
@@ -187,7 +254,7 @@ function sanitizeString(
       : structuralKey !== undefined &&
         STRUCTURAL_IDENTIFIER_KEY.test(structuralKey) &&
         SAFE_IDENTIFIER_VALUE.test(output);
-  if (structuralValueIsSafe) return { value: output, redacted };
+  if (structuralValueIsSafe) return { value: output, redacted, sizeReduced };
   for (const [pattern, replacement] of TOKEN_REDACTIONS) {
     pattern.lastIndex = 0;
     const filtered = output.replace(pattern, replacement);
@@ -206,11 +273,12 @@ function sanitizeString(
   const withPhone = redactPhone(output);
   redacted ||= withPhone !== output;
   output = withPhone;
-  if (output.length > 32_768) {
-    output = `${output.slice(0, 32_767)}\u2026`;
+  if (output.length > limits.stringOutputLength) {
+    output = `${output.slice(0, Math.max(0, limits.stringOutputLength - 1))}\u2026`;
     redacted = true;
+    sizeReduced = true;
   }
-  return { value: output, redacted };
+  return { value: output, redacted, sizeReduced };
 }
 
 function sanitizeValue(
@@ -223,22 +291,25 @@ function sanitizeValue(
   treatSensitiveKeyAsStructural = false,
 ): unknown {
   state.nodes += 1;
-  if (state.nodes > 20_000 || depth > 20) {
+  if (state.nodes > state.limits.nodes || depth > state.limits.depth) {
     state.redacted = true;
     state.structurallyReduced = true;
+    state.sizeReduced = true;
     return "[TRUNCATED]";
   }
   if (typeof value === "string") {
-    const result = sanitizeString(value, structuralKey);
+    const result = sanitizeString(value, structuralKey, state.limits);
     state.redacted ||= result.redacted;
+    state.sizeReduced ||= result.sizeReduced;
     return result.value;
   }
   if (value === null || typeof value === "boolean" || typeof value === "number") return value;
   if (Array.isArray(value)) {
-    const limit = Math.min(value.length, 1_000);
+    const limit = Math.min(value.length, state.limits.arrayLength);
     if (limit < value.length) {
       state.redacted = true;
       state.structurallyReduced = true;
+      state.sizeReduced = true;
     }
     return value
       .slice(0, limit)
@@ -280,14 +351,11 @@ function sanitizeValue(
       SENSITIVE_KEY.test(candidate),
   );
   const originalKeys = new Set(entries.map(([key]) => key));
-  for (const [entryIndex, [key, child]] of entries.slice(0, 1_000).entries()) {
-    if (PROTOTYPE_KEY.test(key)) {
-      state.redacted = true;
-      continue;
-    }
-    const sanitizedKey = sanitizeString(key);
+  for (const [entryIndex, [key, child]] of entries.slice(0, state.limits.objectEntries).entries()) {
+    const sanitizedKey = sanitizeString(key, undefined, state.limits);
+    state.sizeReduced ||= sanitizedKey.sizeReduced;
     let outputKey = key;
-    if (sanitizedKey.redacted) {
+    if (PROTOTYPE_KEY.test(key) || sanitizedKey.redacted) {
       let placeholderIndex = entryIndex + 1;
       do {
         outputKey = `[REDACTED_KEY_${placeholderIndex}]`;
@@ -342,9 +410,10 @@ function sanitizeValue(
       false,
     );
   }
-  if (entries.length > 1_000) {
+  if (entries.length > state.limits.objectEntries) {
     state.redacted = true;
     state.structurallyReduced = true;
+    state.sizeReduced = true;
   }
   return output;
 }
@@ -353,7 +422,13 @@ export function sanitizeForOutputDetailed(
   value: unknown,
   options: SanitizationOptions = {},
 ): SanitizationResult {
-  const state: SanitizationState = { nodes: 0, redacted: false, structurallyReduced: false };
+  const state: SanitizationState = {
+    nodes: 0,
+    redacted: false,
+    structurallyReduced: false,
+    sizeReduced: false,
+    limits: sanitizationLimits(options),
+  };
   const data = sanitizeValue(
     value,
     state,
@@ -366,6 +441,7 @@ export function sanitizeForOutputDetailed(
   return {
     output: { data, redacted: state.redacted, untrusted: true },
     structurallyReduced: state.structurallyReduced,
+    sizeReduced: state.sizeReduced,
   };
 }
 

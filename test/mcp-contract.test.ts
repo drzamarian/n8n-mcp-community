@@ -118,8 +118,25 @@ const NON_DESTRUCTIVE_MUTATIONS = new Map<ToolName, "write" | "unsafe">([
   ["n8n_credentials_create", "write"],
   ["n8n_tags_create", "write"],
   ["n8n_users_create", "unsafe"],
+]);
+
+const OBSERVATIONAL_UNSAFE_OPERATIONS = new Map<ToolName, "unsafe">([
   ["n8n_audit_generate", "unsafe"],
 ]);
+
+function expectedReadOnlyHint(name: ToolName): boolean {
+  return (
+    EXPECTED_TOOL_OPERATIONS[name] === "read-only" || OBSERVATIONAL_UNSAFE_OPERATIONS.has(name)
+  );
+}
+
+function expectedDestructiveHint(name: ToolName): boolean {
+  return (
+    EXPECTED_TOOL_OPERATIONS[name] !== "read-only" &&
+    !NON_DESTRUCTIVE_MUTATIONS.has(name) &&
+    !OBSERVATIONAL_UNSAFE_OPERATIONS.has(name)
+  );
+}
 
 const DESCRIPTION_PARAMETER_SEMANTICS: Readonly<Record<ToolName, RegExp>> = {
   n8n_workflows_list:
@@ -194,7 +211,7 @@ const DESCRIPTION_PARAMETER_SEMANTICS: Readonly<Record<ToolName, RegExp>> = {
   n8n_insights_summary:
     /startDate and endDate are inclusive.*startDate <= endDate.*omitting both requests n8n's default range/i,
   n8n_audit_generate:
-    /Omit categories to use n8n's complete default.*supply the exact risk areas.*daysAbandonedWorkflow is independent.*changes only/i,
+    /Omit categories to use n8n's complete default.*provide 1-5 unique risk areas.*empty array is rejected/i,
   n8n_search_workflows:
     /query is matched locally only in the fields named by searchIn.*active filters upstream first.*keep query, searchIn, active, and limit unchanged/i,
   n8n_get_node_docs:
@@ -247,7 +264,8 @@ const DESCRIPTION_AUTHORIZATION_SEMANTICS: Readonly<Record<ToolName, RegExp>> = 
   n8n_health:
     /requires the configured n8n URL and API key; remote plaintext HTTP also requires N8N_ALLOW_INSECURE_HTTP=1/i,
   n8n_insights_summary: /Requires insights-read permission/i,
-  n8n_audit_generate: /Requires unsafe mode and owner-authorized API access/i,
+  n8n_audit_generate:
+    /remains unsafe-mode and owner-authorized because the report can expose sensitive security posture/i,
   n8n_search_workflows: /Requires workflow-list permission/i,
   n8n_get_node_docs: /Requires no n8n URL, API key, network, or elevated mode/i,
   n8n_list_node_types: /Requires workflow-list permission/i,
@@ -296,7 +314,8 @@ const DESCRIPTION_RETURN_SEMANTICS: Readonly<Record<ToolName, RegExp>> = {
     /returns the request-bound userId with deleted=true and provides no rollback claim/i,
   n8n_health: /Returns ok=true and the successful status, never the upstream body/i,
   n8n_insights_summary: /returns totals, failures, rates, time saved, and runtime aggregates/i,
-  n8n_audit_generate: /returns a sanitized but untrusted report without changing configuration/i,
+  n8n_audit_generate:
+    /never changes resources or configuration.*Returns a sanitized, untrusted report.*clean scan returns an empty map/i,
   n8n_search_workflows: /returns at most 50 value-free matches and explicit scan state/i,
   n8n_get_node_docs:
     /Returns source\/fetched provenance, canonical type, title, summary, guidance, and official URL/i,
@@ -403,7 +422,9 @@ const GLAMA_V020_PARAMETER_REMEDIATION = EXPECTED_TOOLS.filter(
 
 interface ToolDefinitionMatrixObservation {
   readonly operation: string;
+  readonly readOnlyHint: boolean | undefined;
   readonly destructiveHint: boolean | undefined;
+  readonly idempotentHint: boolean | undefined;
   readonly description: string;
 }
 
@@ -419,19 +440,24 @@ interface ToolDefinitionMatrixObservation {
 // https://github.com/n8n-io/n8n/blob/n8n%402.30.7/packages/cli/src/executions/execution.service.ts
 // Stop eligibility is bound to the same official service: new, unknown, waiting, and running are
 // stoppable; already-terminal targets are rejected before a successful response.
+// Security-audit empty results, empty-category expansion, and the ineffective legacy threshold
+// override are bound to n8n 2.30.7's official SecurityAuditService implementation:
+// https://github.com/n8n-io/n8n/blob/n8n%402.30.7/packages/cli/src/security-audit/security-audit.service.ts
 function toolDefinitionMatrixViolations(
   name: ToolName,
   observation: ToolDefinitionMatrixObservation,
 ): string[] {
   const violations: string[] = [];
   const expectedOperation = EXPECTED_TOOL_OPERATIONS[name];
-  const expectedDestructiveHint =
-    expectedOperation !== "read-only" && !NON_DESTRUCTIVE_MUTATIONS.has(name);
+  const expectedReadOnly = expectedReadOnlyHint(name);
+  const expectedDestructive = expectedDestructiveHint(name);
 
   if (observation.operation !== expectedOperation) violations.push("operation");
-  if (observation.destructiveHint !== expectedDestructiveHint) {
+  if (observation.readOnlyHint !== expectedReadOnly) violations.push("readOnlyHint");
+  if (observation.destructiveHint !== expectedDestructive) {
     violations.push("destructiveHint");
   }
+  if (observation.idempotentHint !== expectedReadOnly) violations.push("idempotentHint");
   if (!DESCRIPTION_PARAMETER_SEMANTICS[name].test(observation.description)) {
     violations.push("tool-specific parameter semantics");
   }
@@ -446,7 +472,7 @@ function toolDefinitionMatrixViolations(
 }
 
 const APPROVED_TOOL_METADATA_SHA256 =
-  "83cf07fff5a9651ecd5ea8a750367256f53b0d478af7a93187f11518b516acfc";
+  "af0121339e9ad2257e7364ed9818529a6b7004d7b915f03b54fa03204da2120f";
 
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
@@ -504,21 +530,19 @@ test("the offline MCP inventory is exactly 44 tools, five resources, and four pr
   }
 });
 
-test("all 44 tools publish conservative annotations from the typed registry", async () => {
+test("all 44 tools publish reviewed effect annotations from the typed registry", async () => {
   const { client, server } = await connectedClient();
   try {
     const listed = await client.listTools();
     for (const definition of TOOL_DEFINITIONS) {
       const tool = listed.tools.find((candidate) => candidate.name === definition.name);
       assert(tool, `Missing listed tool ${definition.name}`);
-      assert.equal(tool.annotations?.readOnlyHint, definition.operation === "read-only");
+      const name = definition.name as ToolName;
+      assert.equal(tool.annotations?.readOnlyHint, expectedReadOnlyHint(name));
       assert.equal(tool.annotations?.destructiveHint, definition.annotations.destructiveHint);
-      assert.equal(
-        tool.annotations?.destructiveHint,
-        definition.operation !== "read-only" &&
-          !NON_DESTRUCTIVE_MUTATIONS.has(definition.name as (typeof EXPECTED_TOOLS)[number]),
-      );
+      assert.equal(tool.annotations?.destructiveHint, expectedDestructiveHint(name));
       assert.equal(tool.annotations?.idempotentHint, definition.annotations.idempotentHint);
+      assert.equal(tool.annotations?.idempotentHint, expectedReadOnlyHint(name));
       assert.equal(tool.annotations?.openWorldHint, definition.annotations.openWorldHint);
       assert.deepEqual(tool.execution, { taskSupport: "forbidden" });
       assert(tool.inputSchema);
@@ -530,19 +554,33 @@ test("all 44 tools publish conservative annotations from the typed registry", as
   }
 });
 
-test("additive creates and the broad audit publish non-destructive hints without weakening policy", () => {
+test("additive creates publish non-destructive write hints without weakening policy", () => {
   for (const [name, expectedOperation] of NON_DESTRUCTIVE_MUTATIONS) {
     const definition = TOOL_DEFINITIONS.find((candidate) => candidate.name === name);
     assert(definition, `Missing typed definition for ${name}`);
     assert.equal(definition.operation, expectedOperation, `${name} changed its policy class`);
     assert.equal(definition.annotations.readOnlyHint, false);
     assert.equal(definition.annotations.destructiveHint, false);
+    assert.equal(definition.annotations.idempotentHint, false);
     assert.match(
       definition.description,
-      name === "n8n_audit_generate" ? /non-destructive/i : /additive write/i,
+      /additive write/i,
       `${name} does not explain why destructiveHint is false`,
     );
   }
+});
+
+test("the broad audit is read-only and retry-safe without weakening unsafe authorization", () => {
+  const definition = TOOL_DEFINITIONS.find((candidate) => candidate.name === "n8n_audit_generate");
+  assert(definition);
+  assert.equal(definition.operation, "unsafe");
+  assert.equal(definition.annotations.readOnlyHint, true);
+  assert.equal(definition.annotations.destructiveHint, false);
+  assert.equal(definition.annotations.idempotentHint, true);
+  assert.equal(definition.annotations.openWorldHint, true);
+  assert.match(definition.description, /read-only.*exactly one POST \/audit request/i);
+  assert.match(definition.description, /never changes resources or configuration/i);
+  assert.match(definition.description, /safe to retry.*remains unsafe-mode and owner-authorized/i);
 });
 
 test("the complete 44-row definition matrix matches the final MCP surface bidirectionally", async () => {
@@ -573,7 +611,9 @@ test("the complete 44-row definition matrix matches the final MCP surface bidire
       assert.deepEqual(
         toolDefinitionMatrixViolations(name, {
           operation: definition.operation,
+          readOnlyHint: published.annotations?.readOnlyHint,
           destructiveHint: published.annotations?.destructiveHint,
+          idempotentHint: published.annotations?.idempotentHint,
           description: published.description ?? "",
         }),
         [],
@@ -611,11 +651,13 @@ test("every definition-matrix invariant rejects a controlled synthetic mutation"
     const definition = TOOL_DEFINITIONS.find((candidate) => candidate.name === name);
     assert(definition, `Missing typed definition for ${name}`);
     const expectedOperation = EXPECTED_TOOL_OPERATIONS[name];
-    const expectedDestructiveHint =
-      expectedOperation !== "read-only" && !NON_DESTRUCTIVE_MUTATIONS.has(name);
+    const expectedReadOnly = expectedReadOnlyHint(name);
+    const expectedDestructive = expectedDestructiveHint(name);
     const validObservation: ToolDefinitionMatrixObservation = {
       operation: expectedOperation,
-      destructiveHint: expectedDestructiveHint,
+      readOnlyHint: expectedReadOnly,
+      destructiveHint: expectedDestructive,
+      idempotentHint: expectedReadOnly,
       description: definition.description,
     };
     assert.deepEqual(toolDefinitionMatrixViolations(name, validObservation), []);
@@ -632,9 +674,23 @@ test("every definition-matrix invariant rejects a controlled synthetic mutation"
     assert(
       toolDefinitionMatrixViolations(name, {
         ...validObservation,
-        destructiveHint: !expectedDestructiveHint,
+        readOnlyHint: !expectedReadOnly,
+      }).includes("readOnlyHint"),
+      `${name} matrix did not reject a readOnlyHint mutation`,
+    );
+    assert(
+      toolDefinitionMatrixViolations(name, {
+        ...validObservation,
+        destructiveHint: !expectedDestructive,
       }).includes("destructiveHint"),
-      `${name} matrix did not reject an annotation mutation`,
+      `${name} matrix did not reject a destructiveHint mutation`,
+    );
+    assert(
+      toolDefinitionMatrixViolations(name, {
+        ...validObservation,
+        idempotentHint: !expectedReadOnly,
+      }).includes("idempotentHint"),
+      `${name} matrix did not reject an idempotentHint mutation`,
     );
 
     const semanticMatch = definition.description.match(DESCRIPTION_PARAMETER_SEMANTICS[name]);
@@ -687,7 +743,9 @@ test("every definition-matrix invariant rejects a controlled synthetic mutation"
     assert(
       toolDefinitionMatrixViolations(name, {
         operation: definition.operation,
+        readOnlyHint: definition.annotations.readOnlyHint,
         destructiveHint: definition.annotations.destructiveHint,
+        idempotentHint: definition.annotations.idempotentHint,
         description: definition.description.replace(from, to),
       }).includes(expectedViolation),
       `${name} matrix accepted the controlled inversion: ${from} -> ${to}`,
@@ -837,11 +895,11 @@ test("mutation fallbacks are server-only and accept only fixed bounded identity 
       identity: {},
     };
     for (const definition of TOOL_DEFINITIONS.filter(
-      (candidate) => candidate.operation !== "read-only",
+      (candidate) => candidate.annotations.readOnlyHint !== true,
     )) {
       const contract = genericToolOutputContract(
         definition.name,
-        definition.operation,
+        definition.annotations.readOnlyHint === true,
         definition.outputDataDescription,
       );
       assert.equal(
@@ -869,6 +927,17 @@ test("mutation fallbacks are server-only and accept only fixed bounded identity 
       }),
       false,
       "the public fallback schema accepts an arbitrary oversized identity key",
+    );
+
+    const audit = listed.tools.find((candidate) => candidate.name === "n8n_audit_generate");
+    assert(audit?.outputSchema);
+    const validateAudit = new AjvModule.default({ allErrors: true, strict: false }).compile(
+      audit.outputSchema,
+    );
+    assert.equal(
+      validateAudit({ data: fallback, redacted: false, untrusted: true }),
+      false,
+      "the read-only audit advertises the mutation-only truncated-success fallback",
     );
   } finally {
     await client.close();

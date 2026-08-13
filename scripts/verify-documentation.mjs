@@ -266,18 +266,36 @@ if (
   failures.push("docs/installation.md: npx examples must be complete copyable client entries");
 }
 const installUpgrade =
-  /### Upgrade from 0\.1\.x to 0\.2\.0\n([\s\S]*?)(?=\n## )/.exec(installation)?.[1] ?? "";
+  /### Upgrade from 0\.1\.x\n([\s\S]*?)(?=\n## )/.exec(installation)?.[1] ?? "";
 const compatibilityUpgrade =
   /## Upgrading from 0\.1\.x\n([\s\S]*?)(?=\n## )/.exec(compatibility)?.[1] ?? "";
 const changelogUpgrade = /### Upgrade from 0\.1\.x\n([\s\S]*?)(?=\n## )/.exec(changelog)?.[1] ?? "";
 if (
   !installUpgrade.includes("n8n-mcp-community@0.1.4") ||
   !installUpgrade.includes("n8n-mcp-community@latest") ||
-  !installUpgrade.includes("n8n-mcp-community@0.2.0") ||
+  !installUpgrade.includes(`n8n-mcp-community@${packageManifest.version}`) ||
+  !installUpgrade.includes("0.2.0") ||
   !compatibilityUpgrade.includes("n8n-mcp-community@0.1.4") ||
+  !compatibilityUpgrade.includes(`n8n-mcp-community@${packageManifest.version}`) ||
+  !compatibilityUpgrade.includes("0.2.0") ||
   !changelogUpgrade.includes("n8n-mcp-community@0.1.4")
 ) {
-  failures.push("0.2.0 upgrade guidance is missing from the public documentation");
+  failures.push("0.1.x upgrade guidance is missing or does not point to the current release");
+}
+for (const requiredV030Boundary of [
+  "complete serialized MCP result",
+  "Large single-object reads that fit",
+  "can therefore fail safely in 0.3.0",
+  "truncated=true` and `redacted=true",
+]) {
+  if (!compatibility.includes(requiredV030Boundary)) {
+    failures.push(`docs/compatibility.md: missing v0.3.0 output boundary ${requiredV030Boundary}`);
+  }
+}
+if (
+  !changelog.includes("The generic 256 KiB ceiling now covers the complete serialized MCP result")
+) {
+  failures.push("CHANGELOG.md: missing v0.3.0 complete-result ceiling disclosure");
 }
 const [packageMajor, packageMinor] = String(packageManifest.version).split(".");
 if (!securityPolicy.includes(`currently ${packageMajor}.${packageMinor}.x`)) {
@@ -334,6 +352,12 @@ if (!demoTranscript.includes(`$ ${demoCommand}\n`)) {
 }
 
 const toolsMarkdown = contents.get("docs/tools.md");
+if (
+  !toolsMarkdown?.includes("128 KiB for structured output") ||
+  !toolsMarkdown.includes("320 KiB for the combined summary/JSON rendering")
+) {
+  failures.push("docs/tools.md: missing numeric Introspect output ceilings");
+}
 const { TOOL_DEFINITIONS } = await import(
   pathToFileURL(path.join(root, "dist", "tools", "registry.js")).href
 );

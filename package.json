@@ -1,6 +1,6 @@
 {
   "name": "n8n-mcp-community",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "A security-focused MCP server for self-hosted n8n Community Edition.",
   "private": false,
   "releaseState": "candidate",
@@ -125,7 +125,7 @@
     "ajv-formats": "3.0.1",
     "eslint": "10.8.0",
     "fflate": "0.8.3",
-    "globals": "17.8.0",
+    "globals": "17.9.0",
     "prettier": "3.9.6",
     "typescript": "5.9.3",
     "typescript-eslint": "8.65.0",

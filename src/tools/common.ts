@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { cursor } from "./schemas.js";
+import { cursor, preservingRecord } from "./schemas.js";
 
 export const apiIdentifier = z.union([z.string(), z.number()]).transform(String);
 
@@ -7,7 +7,7 @@ export const entitySchema = z.object({ id: apiIdentifier }).passthrough();
 
 export const listEnvelopeSchema = z
   .object({
-    data: z.array(z.record(z.unknown())).max(100),
+    data: z.array(preservingRecord(z.unknown())).max(100),
     nextCursor: cursor.nullable().optional(),
   })
   .passthrough();
