@@ -2,8 +2,18 @@ import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 import test from "node:test";
 import { OFFICIAL_N8N_DOCUMENTATION_URLS } from "../src/content/official-urls.js";
-import { boundedJson, sanitizeForOutput } from "../src/security/redaction.js";
-import { assertSafeJson, setUnknownPath, validateDotPath } from "../src/tools/schemas.js";
+import {
+  boundedJson,
+  sanitizeForOutput,
+  sanitizeForOutputDetailed,
+} from "../src/security/redaction.js";
+import {
+  assertSafeJson,
+  preservingRecord,
+  setUnknownPath,
+  validateDotPath,
+} from "../src/tools/schemas.js";
+import { z } from "zod";
 
 test("shared output redaction removes secrets, identifiers, PII, and prompt injection", () => {
   const input = {
@@ -42,6 +52,52 @@ test("shared output redaction removes secrets, identifiers, PII, and prompt inje
 
 test("bounded JSON rejects oversized sanitized output", () => {
   assert.throws(() => boundedJson({ value: "x".repeat(2_000) }, 100), /output limit/);
+});
+
+test("sanitization distinguishes content rewriting from size reduction", () => {
+  const contentRewrite = sanitizeForOutputDetailed({ refresh_token_daily: "safe value" });
+  assert.equal(contentRewrite.output.redacted, true);
+  assert.equal(contentRewrite.structurallyReduced, true);
+  assert.equal(contentRewrite.sizeReduced, false);
+  assert.equal(JSON.stringify(contentRewrite.output).includes("refresh_token_daily"), false);
+
+  const sizeReduction = sanitizeForOutputDetailed(Array.from({ length: 1_001 }, () => "safe"));
+  assert.equal(sizeReduction.output.redacted, true);
+  assert.equal(sizeReduction.structurallyReduced, true);
+  assert.equal(sizeReduction.sizeReduced, true);
+  assert.equal((sizeReduction.output.data as unknown[]).length, 1_000);
+});
+
+test("prototype-like object keys are preserved through collision-safe redacted placeholders", () => {
+  const input = JSON.parse(
+    '{"__proto__":{"kept":1},"constructor":{"kept":2},"prototype":{"kept":3},"\\u0000n8n-mcp-own-key:p":{"kept":4}}',
+  ) as Record<string, unknown>;
+  const parsed = preservingRecord(z.unknown()).parse(input);
+  assert.equal(Object.getPrototypeOf(parsed), null);
+  assert.equal(
+    Object.getPrototypeOf(preservingRecord(z.unknown()).parse({ safe: true })),
+    Object.prototype,
+  );
+  assert.equal(Object.hasOwn(parsed, "__proto__"), true);
+  assert.equal(Object.hasOwn(parsed, "\u0000n8n-mcp-own-key:p"), true);
+
+  const result = sanitizeForOutputDetailed(parsed);
+  const data = result.output.data as Record<string, unknown>;
+  const keys = Object.keys(data);
+
+  assert.equal(result.output.redacted, true);
+  assert.equal(result.structurallyReduced, true);
+  assert.equal(result.sizeReduced, false);
+  assert.equal(keys.length, 4);
+  assert.equal(
+    keys.every((key) => /^\[REDACTED_KEY_\d+\]$/.test(key)),
+    true,
+  );
+  assert.equal(JSON.stringify(data["[REDACTED_KEY_1]"]), '{"kept":4}');
+  assert.equal(JSON.stringify(data["[REDACTED_KEY_2]"]), '{"kept":1}');
+  assert.equal(JSON.stringify(data["[REDACTED_KEY_3]"]), '{"kept":2}');
+  assert.equal(JSON.stringify(data["[REDACTED_KEY_4]"]), '{"kept":3}');
+  assert.equal((Object.prototype as { kept?: number }).kept, undefined);
 });
 
 test("validated structural identifiers and cursors remain usable after redaction", () => {
@@ -328,7 +384,13 @@ test("redaction bounds strings, arrays, objects, depth, and total traversal", ()
   const prototypeInput = JSON.parse('{"prototype":"drop","safe":true}') as unknown;
   const prototypeResult = sanitizeForOutput(prototypeInput);
   assert.equal(prototypeResult.redacted, true);
-  assert.equal(JSON.stringify(prototypeResult).includes("drop"), false);
+  const prototypeData = prototypeResult.data as Record<string, unknown>;
+  assert.equal(Object.hasOwn(prototypeData, "prototype"), false);
+  assert.equal(
+    Object.keys(prototypeData).some((key) => /^\[REDACTED_KEY_\d+\]$/.test(key)),
+    true,
+  );
+  assert.equal(Object.values(prototypeData).includes("drop"), true);
 
   const deepRoot: Record<string, unknown> = {};
   let current = deepRoot;

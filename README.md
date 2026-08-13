@@ -104,7 +104,7 @@ how to check the download.
 The current source candidate has been verified with:
 
 - exactly **44 tools**, **5 resources**, and **4 prompts** over real stdio;
-- **297 passing tests** locally on Node.js 24.18.1; CI and release gates require
+- **313 passing tests** locally on Node.js 24.19.0; CI and release gates require
   the pinned Node.js 22.23.1 and 24.18.0 matrix;
 - zero findings from Gitleaks, Semgrep, Trivy, and both project-root
   production/full `npm audit` runs; all three source scanners are reproduced in
@@ -291,7 +291,7 @@ API. The project does not redistribute the `n8n-nodes-base` catalog and does not
 use browser cookies, interactive session routes, or runtime package downloads to
 construct one.
 
-The v0.2.1 candidate surface intentionally excludes arbitrary workflow execution,
+The v0.3.0 candidate surface intentionally excludes arbitrary workflow execution,
 credential/workflow transfer, folders, data tables, beta evaluation endpoints,
 and execution annotations. See the [roadmap](ROADMAP.md) for the annotation
 proposal retained outside the release target.

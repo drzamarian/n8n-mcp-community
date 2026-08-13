@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { sanitizeForOutput } from "../src/security/redaction.js";
 import { createServer } from "../src/server.js";
 
 const ORIGIN = "https://n8n.example.test";
@@ -151,27 +152,52 @@ test("FABLE-R2-P2-06: credential usage tolerates name-only and null references w
 });
 
 test("FABLE-R2-P2-07: an over-cap mutation result reports success with a truthful truncation summary", async () => {
-  const blob = "alpha beta gamma delta ".repeat(1_200);
+  const longCode = "const value = 1;\n".repeat(2_500);
+  const nodes = Array.from({ length: 4 }, (_, index) => ({
+    id: `node_${index}`,
+    name: `Node ${index}`,
+    type: "n8n-nodes-base.code",
+    typeVersion: 1,
+    position: [index * 10, 0],
+    parameters: { jsCode: longCode },
+  }));
   const oversizedWorkflow = {
     id: "wf_big",
     versionId: "v9",
     name: "Oversized created workflow",
     active: false,
     isArchived: false,
-    nodes: Array.from({ length: 20 }, (_, index) => ({
-      id: `node_${index}`,
-      name: `Node ${index}`,
-      type: "n8n-nodes-base.noOp",
-      typeVersion: 1,
-      position: [index * 10, 0],
-      parameters: { blob },
-    })),
+    nodes,
     connections: {},
     settings: {},
   };
+  const projectedWorkflow = {
+    ...oversizedWorkflow,
+    sensitiveWorkflowData: {
+      pinDataReturned: false,
+      staticDataReturned: false,
+      pinDataPresent: false,
+      staticDataPresent: false,
+    },
+  };
+  const primaryEnvelope = sanitizeForOutput(projectedWorkflow);
+  const primaryText = JSON.stringify(primaryEnvelope, null, 2);
+  assert(Buffer.byteLength(primaryText, "utf8") < 256 * 1_024);
+  assert(
+    Buffer.byteLength(
+      JSON.stringify({
+        content: [{ type: "text", text: primaryText }],
+        structuredContent: primaryEnvelope,
+      }),
+      "utf8",
+    ) >
+      256 * 1_024,
+  );
 
+  let requests = 0;
   await withConnectedClient(
     async (input, init) => {
+      requests += 1;
       const request = input instanceof Request ? input : new Request(input, init);
       const url = new URL(request.url);
       if (url.pathname === "/api/v1/workflows" && request.method === "POST") {
@@ -198,14 +224,25 @@ test("FABLE-R2-P2-07: an over-cap mutation result reports success with a truthfu
         },
       });
       assert.equal(result.isError, undefined, JSON.stringify(result).slice(0, 500));
-      const data = structuredData(result);
+      const structured = objectBody(result.structuredContent ?? null);
+      const data = objectBody(structured.data ?? null);
       assert.equal(data.truncated, true);
       assert.equal(data.outcome, "success");
+      assert.equal(structured.redacted, true);
+      assert.equal(structured.untrusted, true);
+      const content = objectBody(result).content;
+      assert(Array.isArray(content));
+      const textBlock = objectBody(content[0]);
+      assert.equal(textBlock.type, "text");
+      const text = textBlock.text;
+      assert(typeof text === "string");
+      assert.deepEqual(JSON.parse(text), structured);
       const identity = objectBody(data.identity ?? null);
       assert.equal(identity.id, "wf_big");
       assert.equal(identity.name, "Oversized created workflow");
     },
   );
+  assert.equal(requests, 1);
 });
 
 test("FABLE-R2-P3-06: execution stop derives a truthful state from the upstream body", async () => {

@@ -1,6 +1,6 @@
 # Security model
 
-This document describes the controls and residual risks of the v0.2.1 source
+This document describes the controls and residual risks of the v0.3.0 source
 candidate. It is a threat model, not a claim that the software or the connected
 n8n instance is invulnerable.
 
@@ -94,6 +94,9 @@ The shared sanitizer:
 - bounds strings, arrays, object entries, depth, and total traversed nodes.
 
 Generic serialized results are limited to 256 KiB and marked `untrusted: true`.
+That limit covers the complete MCP result, including its text and structured
+forms. A mutation summary sets `redacted: true` whenever the original result was
+truncated, even when the retained identity fields need no additional redaction.
 `redacted: false` means no configured sanitizer matched; it does not certify
 that content is harmless, anonymous, or free of unknown secret formats.
 Introspect emits its allowlisted reduced schema directly after applying the

@@ -6,6 +6,45 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - Frozen release candidate
+
+Version 0.3.0 is a frozen release candidate. Availability is established only
+by matching npm provenance, GitHub Release assets and signatures, and MCP
+Registry readbacks; this immutable entry is not rewritten after publication.
+
+### Removed
+
+- **Breaking input-schema change:** `n8n_audit_generate` no longer publishes or
+  accepts `daysAbandonedWorkflow`. n8n Community 2.30.x stores that request
+  override in a legacy setting while the reporter reads typed instance
+  configuration, so the input could not reliably change the audit. Normal MCP
+  clients refresh the smaller schema after reconnecting; raw callers must stop
+  sending the removed field, omit empty category arrays, and deduplicate category
+  names. This incompatible `0.x` change is released as a new minor version.
+
+### Changed
+
+- `n8n_audit_generate` now publishes truthful read-only and idempotent safety
+  hints while retaining the conservative unsafe authorization gate for its
+  sensitive instance-wide report. It makes one request, accepts 1–5 unique
+  categories, treats n8n's empty-array clean result as an empty report, and
+  accepts nullable version metadata from n8n's version feed. It fails
+  explicitly instead of returning a partial audit when sanitizer or final
+  256 KiB result limits are exceeded; multi-category callers can retry with
+  fewer categories, while single-category callers can review the full report in
+  n8n.
+- Sanitized read results now distinguish content redaction from size reduction.
+  Audit reports use validated higher collection bounds within the same final
+  256 KiB envelope, while ordinary read tools keep safe bounded projections.
+- The generic 256 KiB ceiling now covers the complete serialized MCP result,
+  including text and structured content. Large reads that previously fit only
+  the text-side check now fail safely; already-applied mutations return a
+  bounded success summary with `truncated=true` and `redacted=true`.
+- Record parsing now preserves own `__proto__` keys through validation and
+  rewrites prototype-like output keys safely. Workflow updates retain those
+  graph entries instead of silently dropping them.
+- Development dependency `globals` was updated from 17.8.0 to 17.9.0.
+
 ## [0.2.1] - Frozen release candidate
 
 Version 0.2.1 is a frozen release candidate. Availability is established only
@@ -304,6 +343,7 @@ Registry readbacks; this immutable entry is not rewritten after publication.
   publishable history; authenticated public release receipts remain supported.
 
 [Unreleased]: #unreleased
+[0.3.0]: #030---frozen-release-candidate
 [0.2.1]: #021---frozen-release-candidate
 [0.2.0]: #020---frozen-release-candidate
 [0.1.4]: #014---frozen-release-candidate

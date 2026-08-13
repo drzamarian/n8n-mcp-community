@@ -10,9 +10,14 @@ import {
   OutputLimitError,
   sanitizeForOutput,
   sanitizeForOutputDetailed,
+  type SanitizationOptions,
 } from "../security/redaction.js";
 import { TOOL_ENDPOINT_CONTRACTS } from "./endpoint-contracts.js";
 import { genericToolOutputContract, MUTATION_IDENTITY_KEYS } from "./output-contracts.js";
+
+const MAX_SERIALIZED_TOOL_RESULT_BYTES = 256 * 1024;
+const DEFAULT_READ_ONLY_OUTPUT_LIMIT_MESSAGE =
+  "The sanitized result exceeded safe output limits. Use narrower inputs when available; otherwise inspect the full object in n8n.";
 
 export interface ToolContext {
   readonly startup: StartupConfig;
@@ -43,17 +48,22 @@ interface ToolSpec<Shape extends ZodRawShape> {
   readonly outputSchema?: z.ZodTypeAny;
   readonly formatResult?: (value: unknown) => CallToolResult;
   readonly preserveValidatedRootRecordValues?: boolean;
+  readonly sanitizationOptions?: SanitizationOptions;
+  readonly failOnSanitizerLimit?: boolean;
+  readonly readOnly?: boolean;
+  readonly readOnlyOutputLimitMessage?: string;
   readonly destructive?: boolean;
   readonly openWorld?: boolean;
   readonly idempotent?: boolean;
 }
 
 function annotationsFor<Shape extends ZodRawShape>(spec: ToolSpec<Shape>): ToolAnnotations {
+  const readOnly = spec.readOnly ?? spec.operation === "read-only";
   return {
     title: spec.title,
-    readOnlyHint: spec.operation === "read-only",
+    readOnlyHint: readOnly,
     destructiveHint: spec.destructive ?? spec.operation !== "read-only",
-    idempotentHint: spec.idempotent ?? spec.operation === "read-only",
+    idempotentHint: spec.idempotent ?? readOnly,
     openWorldHint: spec.openWorld ?? true,
   };
 }
@@ -86,8 +96,10 @@ function errorResult(error: unknown, correlationId: string, toolName: string): C
 class ToolOutputError extends Error {
   readonly code = "invalid_output";
 
-  constructor() {
-    super("The tool produced a result that did not match its published output contract.");
+  constructor(
+    message = "The tool produced a result that did not match its published output contract.",
+  ) {
+    super(message);
     this.name = "ToolOutputError";
   }
 }
@@ -99,14 +111,22 @@ function validatedOutput(value: unknown, outputSchema: z.ZodTypeAny): unknown {
 }
 
 function resultFromValidatedOutput(safe: unknown): CallToolResult {
-  return {
+  const result: CallToolResult = {
     content: [{ type: "text", text: boundedJson(safe) }],
     structuredContent: { ...(safe as Record<string, unknown>) },
   };
+  // The MCP result carries both the compatibility text and structured content. Bound their
+  // combined serialized form so consumers never receive a nominally successful result above
+  // the documented 256 KiB envelope.
+  if (Buffer.byteLength(JSON.stringify(result)) > MAX_SERIALIZED_TOOL_RESULT_BYTES) {
+    throw new OutputLimitError();
+  }
+  return result;
 }
 
 function fallbackResult(value: unknown, outputSchema: z.ZodTypeAny): CallToolResult {
-  return resultFromValidatedOutput(validatedOutput(sanitizeForOutput(value), outputSchema));
+  const sanitized = sanitizeForOutput(value);
+  return resultFromValidatedOutput(validatedOutput({ ...sanitized, redacted: true }, outputSchema));
 }
 
 // When a mutation's full result exceeds the output cap, the write already landed upstream, so
@@ -139,26 +159,31 @@ function truncatedMutationResult(value: unknown): Record<string, unknown> {
 
 function buildSuccessResult(
   value: unknown,
-  operation: OperationClass,
+  readOnly: boolean,
   primaryDataSchema: z.ZodTypeAny,
   outputSchema: z.ZodTypeAny,
   preserveValidatedRootRecordValues = false,
+  sanitizationOptions: SanitizationOptions = {},
+  failOnSanitizerLimit = false,
+  readOnlyOutputLimitMessage?: string,
 ): CallToolResult {
   // A handler may return only its official primary shape. The public mutation fallback is a
   // server-generated recovery form and can never be supplied directly by an upstream handler.
   validatedOutput(value, primaryDataSchema);
-  const sanitized = sanitizeForOutputDetailed(value, { preserveValidatedRootRecordValues });
+  const sanitized = sanitizeForOutputDetailed(value, {
+    ...sanitizationOptions,
+    preserveValidatedRootRecordValues,
+  });
+  if (failOnSanitizerLimit && sanitized.sizeReduced) {
+    throw new ToolOutputError(readOnlyOutputLimitMessage ?? DEFAULT_READ_ONLY_OUTPUT_LIMIT_MESSAGE);
+  }
   let safe: unknown;
   try {
     safe = validatedOutput(sanitized.output, outputSchema);
   } catch (error) {
     // A completed mutation falls back only when the sanitizer explicitly reduced structure
     // because of its depth/node/breadth bounds. Ordinary post-sanitization schema drift must fail.
-    if (
-      operation === "read-only" ||
-      !(error instanceof ToolOutputError) ||
-      !sanitized.structurallyReduced
-    ) {
+    if (readOnly || !(error instanceof ToolOutputError) || !sanitized.structurallyReduced) {
       throw error;
     }
     return fallbackResult(truncatedMutationResult(value), outputSchema);
@@ -166,7 +191,12 @@ function buildSuccessResult(
   try {
     return resultFromValidatedOutput(safe);
   } catch (error) {
-    if (operation === "read-only" || !(error instanceof OutputLimitError)) throw error;
+    if (readOnly && error instanceof OutputLimitError) {
+      throw new ToolOutputError(
+        readOnlyOutputLimitMessage ?? DEFAULT_READ_ONLY_OUTPUT_LIMIT_MESSAGE,
+      );
+    }
+    if (readOnly || !(error instanceof OutputLimitError)) throw error;
     // A mutating tool has already applied its write, so an over-cap result is a
     // truthful, bounded success summary rather than a misleading failure.
     return fallbackResult(truncatedMutationResult(value), outputSchema);
@@ -184,6 +214,12 @@ export function createToolContext(startup: StartupConfig): ToolContext {
 
 export function defineTool<Shape extends ZodRawShape>(spec: ToolSpec<Shape>): ToolDefinition {
   const annotations = annotationsFor(spec);
+  if (annotations.readOnlyHint === true && annotations.destructiveHint === true) {
+    throw new Error(`Tool ${spec.name} cannot be both read-only and destructive.`);
+  }
+  if (spec.failOnSanitizerLimit === true && annotations.readOnlyHint !== true) {
+    throw new Error(`Tool ${spec.name} can fail on sanitizer limits only when it is read-only.`);
+  }
   const endpointContract = TOOL_ENDPOINT_CONTRACTS[spec.name];
   if (endpointContract === undefined) {
     throw new Error(`Tool ${spec.name} is missing its endpoint documentation contract.`);
@@ -192,7 +228,11 @@ export function defineTool<Shape extends ZodRawShape>(spec: ToolSpec<Shape>): To
   const inputSchema = z.object(inputShape).strict();
   const genericOutput =
     spec.outputSchema === undefined
-      ? genericToolOutputContract(spec.name, spec.operation, spec.outputDataDescription)
+      ? genericToolOutputContract(
+          spec.name,
+          annotations.readOnlyHint === true,
+          spec.outputDataDescription,
+        )
       : undefined;
   const outputSchema = spec.outputSchema ?? genericOutput?.outputSchema;
   if (outputSchema === undefined) {
@@ -231,10 +271,13 @@ export function defineTool<Shape extends ZodRawShape>(spec: ToolSpec<Shape>): To
               }
               result = buildSuccessResult(
                 value,
-                spec.operation,
+                annotations.readOnlyHint === true,
                 genericOutput.primaryDataSchema,
                 outputSchema,
                 spec.preserveValidatedRootRecordValues,
+                spec.sanitizationOptions,
+                spec.failOnSanitizerLimit,
+                spec.readOnlyOutputLimitMessage,
               );
             }
             if (spec.operation !== "read-only") {
