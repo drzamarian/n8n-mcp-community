@@ -12,7 +12,7 @@ import { sanitizeIntrospectResultForOutput } from "../introspect/sanitize.js";
 import { NODE_DOCUMENTATION } from "../content/node-docs.js";
 import { defineTool, type ToolDefinition } from "./definition.js";
 import { booleanQuery, numberQuery, requireSafeAscii } from "./common.js";
-import { cursor, identifier, pageLimit } from "./schemas.js";
+import { cursor, identifier, pageLimit, preservingRecord } from "./schemas.js";
 import { compareCodeUnits } from "../introspect/order.js";
 import { securityAuditSchema } from "./response-contracts.js";
 
@@ -68,11 +68,11 @@ function boundedCommunityPackageCollection(value: unknown) {
 
 const insightsSchema = z
   .object({
-    total: z.record(z.unknown()),
-    failed: z.record(z.unknown()),
-    failureRate: z.record(z.unknown()),
-    timeSaved: z.record(z.unknown()),
-    averageRunTime: z.record(z.unknown()),
+    total: preservingRecord(z.unknown()),
+    failed: preservingRecord(z.unknown()),
+    failureRate: preservingRecord(z.unknown()),
+    timeSaved: preservingRecord(z.unknown()),
+    averageRunTime: preservingRecord(z.unknown()),
   })
   .passthrough();
 
@@ -145,44 +145,49 @@ export const utilityTools: readonly ToolDefinition[] = Object.freeze([
     name: "n8n_audit_generate",
     title: "Generate security audit",
     description:
-      "Run n8n's broad, non-destructive instance security scan. Omit categories to use n8n's complete default, or supply the exact risk areas to include. daysAbandonedWorkflow is independent: it changes only the inactive-workflow age threshold and does not select categories. Use n8n_introspect for one workflow. Requires unsafe mode and owner-authorized API access; returns a sanitized but untrusted report without changing configuration.",
+      "Run one read-only n8n security scan. Omit categories to use n8n's complete default, or provide 1-5 unique risk areas; an empty array is rejected. It makes exactly one POST /audit request and never changes resources or configuration. It is safe to retry but remains unsafe-mode and owner-authorized because the report can expose sensitive security posture. Use n8n_introspect for one workflow. Returns a sanitized, untrusted report; a clean scan returns an empty map. If it cannot fit, retry with fewer categories or read the full report in n8n.",
     operation: "unsafe",
     preserveValidatedRootRecordValues: true,
+    sanitizationOptions: {
+      maxArrayLength: 10_000,
+      maxDepth: 100,
+      maxNodes: 200_000,
+      maxObjectEntries: 10_000,
+      maxStringInputLength: 262_144,
+      maxStringOutputLength: 262_144,
+    },
+    failOnSanitizerLimit: true,
     outputDataDescription:
-      "Map of upstream report titles to validated reports. Each report has one official risk category and bounded sections with recommendations plus typed locations or instance details; all content is sanitized and untrusted.",
+      "Possibly empty map of upstream report titles to validated reports. Each report has one official risk category and bounded sections with recommendations plus typed locations or instance details; all content is sanitized and untrusted.",
+    readOnly: true,
+    readOnlyOutputLimitMessage:
+      "The audit report exceeded safe output limits. If you selected multiple categories, retry with fewer; otherwise review the full report in n8n.",
     destructive: false,
+    idempotent: true,
     input: {
       categories: z
         .array(z.enum(["credentials", "database", "nodes", "filesystem", "instance"]))
-        .max(5)
-        .optional()
-        .describe("Optional audit categories; omit to let n8n use its default complete selection."),
-      daysAbandonedWorkflow: z
-        .number()
-        .int()
         .min(1)
-        .max(3_650)
+        .max(5)
+        .refine((values) => new Set(values).size === values.length, {
+          message: "categories must not contain duplicates.",
+        })
         .optional()
-        .describe("Age threshold in days for classifying an inactive workflow as abandoned."),
+        .describe(
+          "Optional 1-5 unique audit categories; omit to let n8n use its complete default selection.",
+        ),
     },
-    handler: async (input, context) =>
-      securityAuditSchema.parse(
-        await context.client().request({
-          method: "POST",
-          path: "/audit",
-          body:
-            input.categories === undefined && input.daysAbandonedWorkflow === undefined
-              ? {}
-              : {
-                  additionalOptions: {
-                    ...(input.categories === undefined ? {} : { categories: input.categories }),
-                    ...(input.daysAbandonedWorkflow === undefined
-                      ? {}
-                      : { daysAbandonedWorkflow: input.daysAbandonedWorkflow }),
-                  },
-                },
-        }),
-      ),
+    handler: async (input, context) => {
+      const result = await context.client().request({
+        method: "POST",
+        path: "/audit",
+        body:
+          input.categories === undefined
+            ? {}
+            : { additionalOptions: { categories: input.categories } },
+      });
+      return Array.isArray(result) && result.length === 0 ? {} : securityAuditSchema.parse(result);
+    },
   }),
   defineTool({
     name: "n8n_search_workflows",

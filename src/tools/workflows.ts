@@ -15,6 +15,7 @@ import {
   MUTABLE_NODE_ROOTS,
   pageLimit,
   pathSegment,
+  preservingRecord,
   requiredSafeJsonValue,
   safeJsonValue,
   setUnknownPath,
@@ -46,8 +47,8 @@ const nodeSchema = z
       .array(z.number().finite())
       .length(2)
       .describe("Node canvas position as exactly two finite numbers."),
-    parameters: z.record(z.unknown()).default({}),
-    credentials: z.record(z.unknown()).optional(),
+    parameters: preservingRecord(z.unknown()).default({}),
+    credentials: preservingRecord(z.unknown()).optional(),
     disabled: z.boolean().optional(),
     webhookId: identifier("Stable dynamic-webhook routing identifier when present.").optional(),
   })
@@ -61,11 +62,13 @@ const connectionTargetSchema = z
   })
   .passthrough();
 
-const connectionsSchema = z.record(
-  z.record(z.array(z.array(connectionTargetSchema).max(1_000)).max(1_000)),
+const connectionsSchema = preservingRecord(
+  preservingRecord(z.array(z.array(connectionTargetSchema).max(1_000)).max(1_000)),
 );
 
-const staticDataSchema = z.union([z.record(z.unknown()), z.string().max(1024 * 1024)]).nullable();
+const staticDataSchema = z
+  .union([preservingRecord(z.unknown()), z.string().max(1024 * 1024)])
+  .nullable();
 
 const workflowSchema = z.object({
   id: identifier(),
@@ -76,8 +79,8 @@ const workflowSchema = z.object({
   isArchived: z.boolean().optional(),
   nodes: z.array(nodeSchema).max(1_000),
   connections: connectionsSchema,
-  settings: z.record(z.unknown()).default({}),
-  pinData: z.record(z.unknown()).nullable().optional(),
+  settings: preservingRecord(z.unknown()).default({}),
+  pinData: preservingRecord(z.unknown()).nullable().optional(),
   staticData: staticDataSchema.optional(),
   nodeGroups: z.array(z.unknown()).max(1_000).optional(),
 });
@@ -139,12 +142,10 @@ const workflowWriteFields = {
   connections: connectionsSchema
     .optional()
     .describe("Complete replacement connection graph keyed by node name."),
-  settings: z
-    .record(z.unknown())
+  settings: preservingRecord(z.unknown())
     .optional()
     .describe("Complete replacement workflow settings object."),
-  pinData: z
-    .record(z.unknown())
+  pinData: preservingRecord(z.unknown())
     .nullable()
     .optional()
     .describe(
@@ -180,7 +181,7 @@ class WorkflowContractError extends Error {
 // MUTABLE_NODE_ROOTS exactly; every allowed root is bounded so a corrupt value (a string
 // for a boolean, a non-integer retry count, an unknown onError enum) is rejected before PUT.
 const NODE_ROOT_VALUE_CONTRACTS: Readonly<Record<MutableNodeRoot, z.ZodTypeAny>> = {
-  parameters: z.record(z.unknown()),
+  parameters: preservingRecord(z.unknown()),
   position: z.tuple([z.number().finite(), z.number().finite()]),
   disabled: z.boolean(),
   retryOnFail: z.boolean(),
@@ -462,9 +463,8 @@ interface PendingParameterChange {
 
 const MAX_PARAMETER_PATH_SEGMENTS = 16;
 const MAX_PARAMETER_CHANGE_DETAILS = 200;
-// Fit the exact sanitized MCP success envelope with headroom below the shared 256 KiB
-// transport ceiling. This accounts for NFKC expansion, redaction markers, selectors,
-// summaries, coverage, omission metadata, and pretty-print indentation.
+// Keep the compact workflow-diff data below 128 KiB so its duplicated structured and pretty-text
+// forms retain bounded headroom inside the shared 256 KiB serialized-result ceiling.
 const MAX_WORKFLOW_DIFF_OUTPUT_BYTES = 128 * 1024;
 
 function diffValueType(value: unknown): DiffValueType {
@@ -916,8 +916,7 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
       connections: connectionsSchema.describe(
         "Complete connection graph keyed by existing node names.",
       ),
-      settings: z
-        .record(z.unknown())
+      settings: preservingRecord(z.unknown())
         .default({})
         .describe("Workflow settings object (default empty object)."),
       nodeGroups: z
@@ -928,8 +927,7 @@ export const workflowTools: readonly ToolDefinition[] = Object.freeze([
       staticData: staticDataSchema
         .optional()
         .describe("Optional static workflow data; accepted for creation but never returned."),
-      pinData: z
-        .record(z.unknown())
+      pinData: preservingRecord(z.unknown())
         .nullable()
         .optional()
         .describe("Optional pinned-data map or null; accepted for creation but never returned."),

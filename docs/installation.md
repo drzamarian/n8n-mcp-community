@@ -83,15 +83,16 @@ Node versions.
 Run the install command again to update. To roll back, replace `latest` with a
 version, such as `0.1.4`.
 
-### Upgrade from 0.1.x to 0.2.0
+### Upgrade from 0.1.x
 
 Your n8n URL, API key, and `N8N_MCP_MODE` values stay the same. Update the
-package, then restart the MCP client so it reloads the tool schemas. Unsafe
-mode alone now unlocks unsafe tools; there is no second confirmation input.
+package, then restart the MCP client so it reloads the tool schemas. Version
+0.2.0 removed the second confirmation input; unsafe mode alone now unlocks
+unsafe tools.
 
 Global npm users do not edit the client entry. If you followed the 0.1.x npx
 guide, your client is pinned to `n8n-mcp-community@0.1.4`: replace that argument
-with `n8n-mcp-community@latest` or `n8n-mcp-community@0.2.0`. Restart the client,
+with `n8n-mcp-community@latest` or `n8n-mcp-community@0.3.0`. Restart the client,
 run the npx version check below, and confirm the 44/5/4 inventory.
 
 If custom code sends raw tool-call JSON, remove the former `confirmation` field

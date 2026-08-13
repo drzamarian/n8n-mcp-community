@@ -1,16 +1,16 @@
 import { z } from "zod";
-import type { OperationClass } from "../security/operation-policy.js";
 import {
   credentialTypeSchema,
   securityAuditSchema,
   workflowLifecycleMetadataSchema,
 } from "./response-contracts.js";
+import { preservingRecord } from "./schemas.js";
 
 const text = () => z.string();
 const nullableText = () => z.string().nullable();
 const count = () => z.number().int().nonnegative();
 const cursor = () => z.string().nullable();
-const unknownObject = () => z.record(z.unknown());
+const unknownObject = () => preservingRecord(z.unknown());
 
 function workflowNode() {
   return z
@@ -513,15 +513,14 @@ export interface GenericToolOutputContract {
 
 export function genericToolOutputContract(
   toolName: string,
-  operation: OperationClass,
+  readOnly: boolean,
   dataDescription: string,
 ): GenericToolOutputContract {
   const expectedData = outputDataSchemas[toolName];
   if (expectedData === undefined) {
     throw new Error(`Tool ${toolName} is missing its output data contract.`);
   }
-  const dataSchema =
-    operation === "read-only" ? expectedData : z.union([expectedData, truncatedMutation()]);
+  const dataSchema = readOnly ? expectedData : z.union([expectedData, truncatedMutation()]);
   return {
     primaryDataSchema: expectedData,
     outputSchema: z

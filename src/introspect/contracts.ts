@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { preservingRecord } from "../tools/schemas.js";
 import { INTROSPECT_RULE_IDS } from "./rule-ids.js";
 
 export const INTROSPECT_SCHEMA_VERSION = "1.0.0" as const;
@@ -123,8 +124,8 @@ export const WorkflowNodeSchema = z
     onError: z.string().max(128).optional(),
     executeOnce: z.boolean().optional(),
     alwaysOutputData: z.boolean().optional(),
-    parameters: z.record(z.unknown()).optional(),
-    credentials: z.record(z.unknown()).optional(),
+    parameters: preservingRecord(z.unknown()).optional(),
+    credentials: preservingRecord(z.unknown()).optional(),
   })
   .passthrough();
 
@@ -135,9 +136,9 @@ export const WorkflowResponseSchema = z
     active: z.boolean(),
     triggerCount: z.number().int().nonnegative().optional(),
     nodes: z.array(WorkflowNodeSchema).max(1_000).default([]),
-    connections: z.record(z.unknown()).default({}),
-    settings: z.record(z.unknown()).default({}),
-    pinData: z.record(z.unknown()).nullable().optional(),
+    connections: preservingRecord(z.unknown()).default({}),
+    settings: preservingRecord(z.unknown()).default({}),
+    pinData: preservingRecord(z.unknown()).nullable().optional(),
   })
   .passthrough();
 
@@ -171,7 +172,7 @@ export const ExecutionListResponseSchema = z
   .passthrough();
 
 export const ExecutionDetailResponseSchema = ExecutionMetadataSchema.extend({
-  data: z.record(z.unknown()).optional(),
+  data: preservingRecord(z.unknown()).optional(),
 }).passthrough();
 
 export type WorkflowNode = z.infer<typeof WorkflowNodeSchema>;
@@ -333,7 +334,7 @@ export const FindingSchema = z.object({
   }),
   evidence: z.object({
     summary: z.string(),
-    facts: z.record(FactValueSchema).optional(),
+    facts: preservingRecord(FactValueSchema).optional(),
   }),
   remediation: z.string(),
   documentationUrl: z

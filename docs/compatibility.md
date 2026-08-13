@@ -9,7 +9,7 @@ release evidence from the client-matrix gates that remain open.
 | ---------------------- | ------------------------------------------------------------- |
 | Node.js 22.23.1        | Pinned CI/release target; exact candidate proof comes from CI |
 | Node.js 24.18.0        | Pinned CI/release target; exact candidate proof comes from CI |
-| Node.js 24.18.1        | Current complete local candidate gate                         |
+| Node.js 24.19.0        | Current complete local candidate gate                         |
 | MCP transport          | stdio inventory verified as 44 tools, 5 resources, 4 prompts  |
 | macOS on Apple silicon | Development and local verification environment                |
 | Linux and Windows      | No public release claim yet                                   |
@@ -18,17 +18,40 @@ release evidence from the client-matrix gates that remain open.
 
 The package declares Node.js `>=22.0.0`. That engine range is an acceptance
 floor, not evidence that every later major has completed the release matrix.
-The supported release lines for v0.2.1 are Node.js 22 and 24.
+The supported release lines for v0.3.0 are Node.js 22 and 24.
+
+## Upgrading to 0.3.0
+
+Install `n8n-mcp-community@latest` again, then restart the MCP client. The
+connection values, command, modes, inventory, and non-audit inputs are unchanged.
+
+The 256 KiB generic output limit now covers the complete serialized MCP result,
+including both text and structured content. Large single-object reads that fit
+in 0.2.x can therefore fail safely in 0.3.0. Use narrower inputs when the tool
+offers them; otherwise inspect the full object in n8n. Mutations that already
+landed return a bounded success summary with `truncated=true` and `redacted=true`
+instead of inviting a retry.
+
+`n8n_audit_generate` no longer accepts `daysAbandonedWorkflow`. n8n Community
+2.30.x writes that request value to a legacy setting, while the audit reporter
+reads typed instance configuration, so callers could not rely on the override.
+Normal MCP clients refresh the smaller schema when they reconnect. Raw scripted
+callers must stop sending that field. Use the n8n instance setting when the
+upstream product exposes a working configuration path.
+
+Raw audit callers must also omit `categories` when they want n8n's complete
+default, instead of sending an empty array, and must remove duplicate category
+names. MCP clients receive these constraints when they reconnect.
 
 ## Upgrading from 0.1.x
 
 The connection values are unchanged. Global npm users keep the same client
 entry. Users who followed the 0.1.x npx guide must replace the pinned
 `n8n-mcp-community@0.1.4` argument with `n8n-mcp-community@latest` or
-`n8n-mcp-community@0.2.0`. After updating, restart the MCP client and confirm the
+`n8n-mcp-community@0.3.0`. After updating, restart the MCP client and confirm the
 version and 44/5/4 inventory.
 
-The 14 unsafe tools no longer publish or require a `confirmation` field;
+Since 0.2.0, the 14 unsafe tools no longer publish or require a `confirmation` field;
 `N8N_MCP_MODE=unsafe` is the only server-side mode gate. Raw scripted callers
 must stop sending that removed field. Privately distributed MCPB updates are
 manual; the [install guide](installation.md#update-or-roll-back-the-mcpb) gives
@@ -36,7 +59,7 @@ update and rollback steps.
 
 ## n8n Community Edition
 
-The v0.2.1 floor candidate is n8n Community Edition 2.30.5, with 2.30.7 as the
+The v0.3.0 floor candidate is n8n Community Edition 2.30.5, with 2.30.7 as the
 current comparison target. The compiled public 44-tool candidate passed fresh,
 disposable lifecycles on both versions with synthetic fixtures, API-key
 revocation, resource cleanup, enforced candidate-process egress isolation, and
@@ -48,7 +71,7 @@ browser cookies, interactive `/rest` routes, paid project transfers, arbitrary
 workflow execution, or runtime node-catalog downloads.
 
 `n8n_credentials_list` is supported only from n8n 2.30.5 onward. Project
-selectors are intentionally absent because v0.2.1 does not present paid project
+selectors are intentionally absent because v0.3.0 does not present paid project
 capabilities as Community features. Other tools may also depend on endpoint
 availability and the permissions assigned to the API key; an HTTP 403 does not
 by itself mean the endpoint is absent.
@@ -87,7 +110,7 @@ surface.
 
 ## Deliberate exclusions
 
-v0.2.1 does not include:
+v0.3.0 does not include:
 
 - folders or data tables;
 - beta evaluation endpoints;

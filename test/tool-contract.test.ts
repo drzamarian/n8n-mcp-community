@@ -373,7 +373,6 @@ const CALLS: Readonly<Record<string, Record<string, unknown>>> = {
   },
   n8n_audit_generate: {
     categories: ["credentials", "nodes"],
-    daysAbandonedWorkflow: 30,
   },
   n8n_search_workflows: { query: "order", searchIn: ["name"] },
   n8n_get_node_docs: { node: "webhook" },
@@ -546,6 +545,67 @@ test("registered Introspect preserves distinct literal-secret finding IDs", asyn
         )
         .map((finding) => finding.id);
       assert.deepEqual(ids, ["PRIVACY_LITERAL_SECRET:node-1", "PRIVACY_LITERAL_SECRET:node-2"]);
+    },
+  );
+});
+
+test("registered Introspect analyzes own prototype keys instead of returning false passes", async () => {
+  const parameters = JSON.parse('{"__proto__":{"apiKey":"literal-secret"}}') as Record<
+    string,
+    unknown
+  >;
+  const connections = JSON.parse(
+    '{"__proto__":{"main":[[{"node":"Target","type":"main","index":0}]]}}',
+  ) as Record<string, unknown>;
+  await withConnectedClient(
+    async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      const url = new URL(request.url);
+      if (url.pathname === "/api/v1/workflows/wf_1") {
+        return json({
+          ...workflow,
+          active: false,
+          nodes: [
+            {
+              id: "node_source",
+              name: "__proto__",
+              type: "n8n-nodes-base.noOp",
+              typeVersion: 1,
+              position: [0, 0],
+              disabled: true,
+              parameters,
+            },
+            {
+              id: "node_target",
+              name: "Target",
+              type: "n8n-nodes-base.noOp",
+              typeVersion: 1,
+              position: [200, 0],
+              parameters: {},
+            },
+          ],
+          connections,
+          pinData: undefined,
+        });
+      }
+      if (url.pathname === "/api/v1/executions") {
+        return json({ data: [], nextCursor: null });
+      }
+      return json({ message: "No fixture" }, 404);
+    },
+    async (client) => {
+      const result = await client.callTool({
+        name: "n8n_introspect",
+        arguments: { workflowId: "wf_1", profile: "quick" },
+      });
+      assert.equal(result.isError, undefined, JSON.stringify(result));
+      const structured = objectBody(result.structuredContent ?? null);
+      assert(Array.isArray(structured.findings));
+      const ruleIds = new Set(
+        (structured.findings as Array<Record<string, unknown>>).map((finding) => finding.ruleId),
+      );
+      assert.equal(ruleIds.has("PRIVACY_LITERAL_SECRET"), true);
+      assert.equal(ruleIds.has("GRAPH_DISABLED_CONNECTED_NODE"), true);
     },
   );
 });
@@ -1243,20 +1303,29 @@ test("all 44 tools complete their positive MCP contract against a bounded Public
     assert.equal(new URLSearchParams(executionGet.search).get("includeData"), "true");
     assert.equal(new URLSearchParams(executionGet.search).get("redactExecutionData"), "true");
 
-    const audit = requests.find(
+    const auditRequests = requests.filter(
       (request) => request.pathname === "/api/v1/audit" && request.method === "POST",
     );
+    assert.equal(auditRequests.length, 1, "the audit tool issued more than one broad scan");
+    const audit = auditRequests[0];
     assert(audit);
+    assert.equal(
+      [...requests, audit].filter(
+        (request) => request.pathname === "/api/v1/audit" && request.method === "POST",
+      ).length === 1,
+      false,
+      "the exact-one-request oracle accepted a controlled duplicate",
+    );
     const auditDefinition = TOOL_DEFINITIONS.find(
       (definition) => definition.name === "n8n_audit_generate",
     );
     assert.equal(auditDefinition?.operation, "unsafe");
-    assert.equal(auditDefinition.annotations.readOnlyHint, false);
+    assert.equal(auditDefinition.annotations.readOnlyHint, true);
     assert.equal(auditDefinition.annotations.destructiveHint, false);
+    assert.equal(auditDefinition.annotations.idempotentHint, true);
     assert.deepEqual(audit.body, {
       additionalOptions: {
         categories: ["credentials", "nodes"],
-        daysAbandonedWorkflow: 30,
       },
     });
     const insights = requests.find((request) => request.pathname === "/api/v1/insights/summary");
@@ -2148,6 +2217,561 @@ test("credential schema and security audit reject non-official response shapes",
       },
     );
   }
+});
+
+test("security audit accepts the official empty result and makes exactly one request", async () => {
+  let requests = 0;
+  await withConnectedClient(
+    async () => {
+      requests += 1;
+      return json([]);
+    },
+    async (client) => {
+      const result = await client.callTool({ name: "n8n_audit_generate", arguments: {} });
+      assert.equal(result.isError, undefined);
+      const structured = objectBody(result.structuredContent ?? null);
+      assert.deepEqual(plainJson(structured.data), {});
+      assert.equal(structured.redacted, false);
+      assert.equal(structured.untrusted, true);
+    },
+  );
+  assert.equal(requests, 1);
+});
+
+test("security audit accepts null, omitted, and populated metadata from the n8n version feed", async () => {
+  let requests = 0;
+  await withConnectedClient(
+    async () => {
+      requests += 1;
+      return json({
+        "Instance Risk Report": {
+          risk: "instance",
+          sections: [
+            {
+              title: "Version updates",
+              description: "Synthetic nullable version-metadata fixture.",
+              recommendation: "Review available updates.",
+              nextVersions: [
+                {
+                  name: "2.30.7",
+                  nodes: [],
+                  createdAt: "2026-08-01T00:00:00.000Z",
+                  description: "Synthetic release metadata.",
+                  documentationUrl: "https://docs.n8n.io/release-notes/",
+                  hasBreakingChange: null,
+                  hasSecurityFix: null,
+                  hasSecurityIssue: null,
+                  securityIssueFixVersion: null,
+                },
+                {
+                  name: "2.30.8",
+                  nodes: [],
+                  createdAt: "2026-08-02T00:00:00.000Z",
+                  description: "Synthetic populated release metadata.",
+                  documentationUrl: "https://docs.n8n.io/release-notes/",
+                  hasBreakingChange: true,
+                  hasSecurityFix: true,
+                  hasSecurityIssue: false,
+                  securityIssueFixVersion: "2.30.8",
+                },
+                {
+                  name: "2.30.9",
+                  nodes: [],
+                  createdAt: "2026-08-03T00:00:00.000Z",
+                  description: "Synthetic omitted release metadata.",
+                  documentationUrl: "https://docs.n8n.io/release-notes/",
+                },
+              ],
+            },
+          ],
+        },
+      });
+    },
+    async (client) => {
+      const result = await client.callTool({
+        name: "n8n_audit_generate",
+        arguments: { categories: ["instance"] },
+      });
+      assert.equal(result.isError, undefined, JSON.stringify(result));
+      const structured = objectBody(result.structuredContent ?? null);
+      const report = objectBody(objectBody(structured.data)["Instance Risk Report"]);
+      const sections = report.sections as Array<Record<string, unknown>>;
+      const nextVersions = sections[0]?.nextVersions as Array<Record<string, unknown>>;
+      assert.equal(nextVersions[0]?.hasBreakingChange, null);
+      assert.equal(nextVersions[0]?.hasSecurityFix, null);
+      assert.equal(nextVersions[0]?.hasSecurityIssue, null);
+      assert.equal(nextVersions[0]?.securityIssueFixVersion, null);
+      assert.equal(nextVersions[1]?.hasBreakingChange, true);
+      assert.equal(nextVersions[1]?.hasSecurityFix, true);
+      assert.equal(nextVersions[1]?.hasSecurityIssue, false);
+      assert.equal(nextVersions[1]?.securityIssueFixVersion, "2.30.8");
+      assert.equal(Object.hasOwn(nextVersions[2] ?? {}, "hasBreakingChange"), false);
+      assert.equal(Object.hasOwn(nextVersions[2] ?? {}, "hasSecurityFix"), false);
+      assert.equal(Object.hasOwn(nextVersions[2] ?? {}, "hasSecurityIssue"), false);
+      assert.equal(Object.hasOwn(nextVersions[2] ?? {}, "securityIssueFixVersion"), false);
+      assert.equal(structured.redacted, false);
+      assert.equal(structured.untrusted, true);
+    },
+  );
+  assert.equal(requests, 1);
+});
+
+test("security audit preserves prototype-like upstream settings through visible redaction", async () => {
+  const settings = JSON.parse('{"__proto__":{"kept":1},"safeSetting":true}') as Record<
+    string,
+    unknown
+  >;
+  let requests = 0;
+  await withConnectedClient(
+    async () => {
+      requests += 1;
+      return json({
+        "Instance Risk Report": {
+          risk: "instance",
+          sections: [
+            {
+              title: "Unsafe settings",
+              description: "Synthetic prototype-key fixture.",
+              recommendation: "Review settings.",
+              settings,
+            },
+          ],
+        },
+      });
+    },
+    async (client) => {
+      const result = await client.callTool({
+        name: "n8n_audit_generate",
+        arguments: { categories: ["instance"] },
+      });
+      assert.equal(result.isError, undefined, JSON.stringify(result));
+      const structured = objectBody(result.structuredContent ?? null);
+      const data = objectBody(structured.data ?? null);
+      const report = objectBody(data["Instance Risk Report"] ?? null);
+      const sections = report.sections;
+      assert(Array.isArray(sections));
+      const outputSettings = objectBody(objectBody(sections[0]).settings);
+      assert.equal(Object.hasOwn(outputSettings, "__proto__"), false);
+      const placeholder = Object.keys(outputSettings).find((key) =>
+        /^\[REDACTED_KEY_\d+\]$/.test(key),
+      );
+      assert(placeholder, "The upstream entry must remain visible under a safe placeholder");
+      assert.deepEqual(plainJson(objectBody(outputSettings[placeholder])), { kept: 1 });
+      assert.equal(outputSettings.safeSetting, true);
+      assert.equal(structured.redacted, true);
+      assert.equal(structured.untrusted, true);
+    },
+  );
+  assert.equal(requests, 1);
+});
+
+test("security audit accepts both category boundaries with exact request bodies", async () => {
+  for (const categories of [
+    ["credentials"],
+    ["credentials", "database", "nodes", "filesystem", "instance"],
+  ] as const) {
+    const bodies: unknown[] = [];
+    await withConnectedClient(
+      async (input, init) => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        bodies.push(JSON.parse(await request.clone().text()) as unknown);
+        return json([]);
+      },
+      async (client) => {
+        const result = await client.callTool({
+          name: "n8n_audit_generate",
+          arguments: { categories: [...categories] },
+        });
+        assert.equal(result.isError, undefined);
+      },
+    );
+    assert.deepEqual(bodies, [{ additionalOptions: { categories: [...categories] } }]);
+  }
+});
+
+test("security audit rejects empty, duplicate, and overlong categories before network", async () => {
+  for (const categories of [
+    [],
+    ["nodes", "nodes"],
+    ["credentials", "database", "nodes", "filesystem", "instance", "nodes"],
+  ]) {
+    let requests = 0;
+    await withConnectedClient(
+      async () => {
+        requests += 1;
+        return json([]);
+      },
+      async (client) => {
+        const result = await client.callTool({
+          name: "n8n_audit_generate",
+          arguments: { categories },
+        });
+        assert.equal(result.isError, true);
+      },
+    );
+    assert.equal(requests, 0, `${JSON.stringify(categories)} reached n8n`);
+  }
+});
+
+test("a below-cap audit with 1,001 locations remains usable and complete", async () => {
+  const locations = Array.from({ length: 1_001 }, (_, index) => ({
+    kind: "credential",
+    id: `cred_${index}`,
+    name: `Credential ${index}`,
+  }));
+  let requests = 0;
+  await withConnectedClient(
+    async () => {
+      requests += 1;
+      return json({
+        "Credentials Risk Report": {
+          risk: "credentials",
+          sections: [
+            {
+              title: "Unused credentials",
+              description: "Synthetic below-cap fixture.",
+              recommendation: "Review credentials.",
+              location: locations,
+            },
+          ],
+        },
+      });
+    },
+    async (client) => {
+      const result = await client.callTool({
+        name: "n8n_audit_generate",
+        arguments: { categories: ["credentials"] },
+      });
+      assert.equal(result.isError, undefined);
+      const structured = objectBody(result.structuredContent ?? null);
+      const data = objectBody(structured.data ?? null);
+      const report = objectBody(data["Credentials Risk Report"] ?? null);
+      const sections = report.sections as Array<Record<string, unknown>>;
+      assert.equal(sections[0]?.location instanceof Array, true);
+      assert.equal((sections[0]?.location as unknown[]).length, 1_001);
+      assert.equal(structured.redacted, false);
+      assert(Buffer.byteLength(JSON.stringify(result), "utf8") < 256 * 1_024);
+    },
+  );
+  assert.equal(requests, 1);
+});
+
+test("an audit whose combined MCP result exceeds 256 KiB fails even when its text fits", async () => {
+  const locations = Array.from({ length: 1_300 }, (_, index) => ({
+    kind: "credential",
+    id: `cred_${index}`,
+    name: `Credential ${index}`,
+  }));
+  const report = {
+    "Credentials Risk Report": {
+      risk: "credentials",
+      sections: [
+        {
+          title: "Unused credentials",
+          description: "Synthetic combined-envelope fixture.",
+          recommendation: "Review credentials.",
+          location: locations,
+        },
+      ],
+    },
+  };
+  const safeEnvelope = { data: report, redacted: false, untrusted: true };
+  assert(Buffer.byteLength(JSON.stringify(safeEnvelope, null, 2), "utf8") < 256 * 1_024);
+  assert(
+    Buffer.byteLength(
+      JSON.stringify({
+        content: [{ type: "text", text: JSON.stringify(safeEnvelope, null, 2) }],
+        structuredContent: safeEnvelope,
+      }),
+      "utf8",
+    ) >
+      256 * 1_024,
+  );
+  let requests = 0;
+  await withConnectedClient(
+    async () => {
+      requests += 1;
+      return json(report);
+    },
+    async (client) => {
+      const result = await client.callTool({
+        name: "n8n_audit_generate",
+        arguments: { categories: ["credentials"] },
+      });
+      assert.equal(result.isError, true);
+      const serialized = JSON.stringify(result);
+      assert.match(serialized, /invalid_output/);
+      assert.equal(serialized.includes('"outcome":"success"'), false);
+    },
+  );
+  assert.equal(requests, 1);
+});
+
+test("a small over-depth audit fails instead of returning silently reduced settings", async () => {
+  let nested: Record<string, unknown> = { leaf: true };
+  for (let depth = 0; depth < 150; depth += 1) nested = { next: nested };
+  let requests = 0;
+  await withConnectedClient(
+    async () => {
+      requests += 1;
+      return json({
+        "Instance Risk Report": {
+          risk: "instance",
+          sections: [
+            {
+              title: "Nested settings",
+              description: "Synthetic over-depth fixture.",
+              recommendation: "Review settings in n8n.",
+              settings: { nested },
+            },
+          ],
+        },
+      });
+    },
+    async (client) => {
+      const result = await client.callTool({
+        name: "n8n_audit_generate",
+        arguments: { categories: ["instance"] },
+      });
+      assert.equal(result.isError, true);
+      const serialized = JSON.stringify(result);
+      assert.match(serialized, /invalid_output/);
+      assert.match(serialized, /exceeded safe output limits/);
+      assert.equal(serialized.includes('"outcome":"success"'), false);
+    },
+  );
+  assert.equal(requests, 1);
+});
+
+test("oversized security audits fail truthfully and recommend fewer categories", async () => {
+  const locations = Array.from({ length: 6_000 }, (_, index) => ({
+    kind: "credential",
+    id: `cred_${index}`,
+    name: `Credential ${index}`,
+  }));
+  let requests = 0;
+  await withConnectedClient(
+    async () => {
+      requests += 1;
+      return json({
+        "Credentials Risk Report": {
+          risk: "credentials",
+          sections: [
+            {
+              title: "Unused credentials",
+              description: "Synthetic bounded-output fixture.",
+              recommendation: "Review credentials.",
+              location: locations,
+            },
+          ],
+        },
+      });
+    },
+    async (client) => {
+      const result = await client.callTool({
+        name: "n8n_audit_generate",
+        arguments: { categories: ["credentials"] },
+      });
+      assert.equal(result.isError, true);
+      const serialized = JSON.stringify(result);
+      assert.match(serialized, /invalid_output/);
+      assert.match(serialized, /If you selected multiple categories, retry with fewer/);
+      assert.match(serialized, /otherwise review the full report in n8n/);
+      assert.equal(serialized.includes('"outcome":"success"'), false);
+      assert.equal(serialized.includes("The mutation completed upstream"), false);
+    },
+  );
+  assert.equal(requests, 1);
+});
+
+test("content-redacted read maps succeed without masquerading as size overflows", async () => {
+  const sensitiveMapKey = "refresh_token_daily";
+  const sensitiveNode = { ...node, name: sensitiveMapKey, parameters: { path: "safe" } };
+  const connections = {
+    [sensitiveMapKey]: {
+      main: [[{ node: sensitiveMapKey, type: "main", index: 0 }]],
+    },
+  };
+  const cases = [
+    {
+      name: "n8n_workflows_get",
+      arguments: CALLS.n8n_workflows_get,
+      response: { ...workflow, nodes: [sensitiveNode], connections },
+    },
+    {
+      name: "n8n_workflows_get_version",
+      arguments: CALLS.n8n_workflows_get_version,
+      response: { ...historicalWorkflow, nodes: [sensitiveNode], connections },
+    },
+    {
+      name: "n8n_credentials_schema",
+      arguments: CALLS.n8n_credentials_schema,
+      response: {
+        additionalProperties: false,
+        type: "object",
+        properties: { [sensitiveMapKey]: { type: "string" } },
+        required: [sensitiveMapKey],
+      },
+    },
+    {
+      name: "n8n_workflows_get",
+      arguments: CALLS.n8n_workflows_get,
+      response: {
+        ...workflow,
+        nodes: [{ ...sensitiveNode, name: "constructor" }],
+        connections: {
+          constructor: {
+            main: [[{ node: "constructor", type: "main", index: 0 }]],
+          },
+        },
+      },
+      originalMapKey: "constructor",
+    },
+  ] as const;
+
+  for (const testCase of cases) {
+    let requests = 0;
+    await withConnectedClient(
+      async () => {
+        requests += 1;
+        return json(testCase.response);
+      },
+      async (client) => {
+        const result = await client.callTool({
+          name: testCase.name,
+          arguments: testCase.arguments,
+        });
+        assert.equal(result.isError, undefined, `${testCase.name} returned a false size error`);
+        const structured = objectBody(result.structuredContent ?? null);
+        assert.equal(structured.redacted, true);
+        const data = objectBody(structured.data ?? null);
+        const map = objectBody(
+          testCase.name === "n8n_credentials_schema" ? data.properties : data.connections,
+        );
+        const originalMapKey =
+          "originalMapKey" in testCase ? testCase.originalMapKey : sensitiveMapKey;
+        const replacementPresent =
+          !Object.hasOwn(map, originalMapKey) &&
+          Object.keys(map).some((key) => /^\[REDACTED_KEY_\d+\]$/.test(key));
+        assert.equal(replacementPresent, true);
+        assert.equal(
+          !Object.hasOwn({}, originalMapKey) &&
+            Object.keys({}).some((key) => /^\[REDACTED_KEY_\d+\]$/.test(key)),
+          false,
+          "the preservation oracle accepted a missing replacement",
+        );
+      },
+    );
+    assert.equal(requests, 1, `${testCase.name} did not make exactly one upstream request`);
+  }
+});
+
+test("long workflow content remains a redacted read below the final envelope cap", async () => {
+  const longCode = "const value = 1;\n".repeat(2_500);
+  let requests = 0;
+  await withConnectedClient(
+    async () => {
+      requests += 1;
+      return json({
+        ...workflow,
+        nodes: [
+          {
+            ...node,
+            type: "n8n-nodes-base.code",
+            parameters: { jsCode: longCode },
+          },
+        ],
+      });
+    },
+    async (client) => {
+      const result = await client.callTool({
+        name: "n8n_workflows_get",
+        arguments: CALLS.n8n_workflows_get,
+      });
+      assert.equal(result.isError, undefined);
+      const structured = objectBody(result.structuredContent ?? null);
+      const data = objectBody(structured.data ?? null);
+      const nodes = data.nodes as Array<Record<string, unknown>>;
+      const parameters = objectBody(nodes[0]?.parameters ?? null);
+      const jsCode = parameters.jsCode;
+      assert.equal(structured.redacted, true);
+      assert.equal(typeof jsCode, "string");
+      assert.equal((jsCode as string).length, 32_768);
+      assert.equal((jsCode as string).endsWith("\u2026"), true);
+      assert.equal(JSON.stringify(result).includes(longCode), false);
+      assert(Buffer.byteLength(JSON.stringify(result), "utf8") < 256 * 1_024);
+    },
+  );
+  assert.equal(requests, 1);
+});
+
+test("a generic read fails when only its duplicated complete MCP result exceeds 256 KiB", async () => {
+  const nodes = Array.from({ length: 190 }, (_, index) => ({
+    id: `node_${index}`,
+    name: `Node ${index}`,
+    type: "n8n-nodes-base.httpRequest",
+    typeVersion: 4,
+    position: [index * 10, 0],
+    parameters: {
+      method: "GET",
+      description: "alpha beta gamma delta ".repeat(20),
+    },
+  }));
+  const response = {
+    id: "wf_limit",
+    versionId: "v10",
+    name: "Large workflow",
+    active: false,
+    isArchived: false,
+    nodes,
+    connections: {},
+    settings: {},
+  };
+  const expectedEnvelope = {
+    data: {
+      ...response,
+      sensitiveWorkflowData: {
+        pinDataReturned: false,
+        staticDataReturned: false,
+        pinDataPresent: "not_requested",
+        staticDataPresent: "not_requested",
+      },
+    },
+    redacted: false,
+    untrusted: true,
+  };
+  const compatibilityText = JSON.stringify(expectedEnvelope, null, 2);
+  assert(Buffer.byteLength(compatibilityText, "utf8") < 256 * 1_024);
+  assert(
+    Buffer.byteLength(
+      JSON.stringify({
+        content: [{ type: "text", text: compatibilityText }],
+        structuredContent: expectedEnvelope,
+      }),
+      "utf8",
+    ) >
+      256 * 1_024,
+  );
+
+  let requests = 0;
+  await withConnectedClient(
+    async () => {
+      requests += 1;
+      return json(response);
+    },
+    async (client) => {
+      const result = await client.callTool({
+        name: "n8n_workflows_get",
+        arguments: { workflowId: "wf_limit" },
+      });
+      assert.equal(result.isError, true);
+      const serialized = JSON.stringify(result);
+      assert.match(serialized, /invalid_output/);
+      assert.match(serialized, /otherwise inspect the full object in n8n/);
+      assert.equal(serialized.includes('"outcome":"success"'), false);
+    },
+  );
+  assert.equal(requests, 1);
 });
 
 test("historical workflow reads reject mismatched response identity", async () => {
@@ -3448,9 +4072,17 @@ test("workflow rename succeeds despite prototype-like keys and deep upstream nod
   const constructorValue = { note: "prototype-like key preserved from upstream" };
   const adversarialNode = {
     ...node,
+    name: "__proto__",
     parameters: { constructor: constructorValue, deep },
   };
-  const adversarialWorkflow = { ...workflow, nodes: [adversarialNode] };
+  const adversarialConnections = JSON.parse(
+    '{"__proto__":{"main":[[{"node":"__proto__","type":"main","index":0}]]}}',
+  ) as Record<string, unknown>;
+  const adversarialWorkflow = {
+    ...workflow,
+    nodes: [adversarialNode],
+    connections: adversarialConnections,
+  };
   const requests: CapturedRequest[] = [];
   await withConnectedClient(
     async (input, init) => {
@@ -3477,13 +4109,20 @@ test("workflow rename succeeds despite prototype-like keys and deep upstream nod
       const params = objectBody(objectBody(nodes[0]).parameters);
       assert.deepEqual(params["constructor"], constructorValue);
       assert.deepEqual(params["deep"], deep);
+      const connections = objectBody(putBody.connections);
+      assert.equal(Object.hasOwn(connections, "__proto__"), true);
+      assert.deepEqual(connections["__proto__"], {
+        main: [[{ node: "__proto__", type: "main", index: 0 }]],
+      });
     },
   );
 });
 
-test("workflow writes still reject caller-supplied prototype keys before any request", async () => {
+test("caller mutation maps reject exact prototype keys before any request", async () => {
   const requests: CapturedRequest[] = [];
   await withConnectedClient(createMockFetch(requests), async (client) => {
+    const exactPrototypeMap = () =>
+      JSON.parse('{"__proto__":{"polluted":true}}') as Record<string, unknown>;
     const callerCases = [
       {
         name: "n8n_update_node",
@@ -3498,7 +4137,44 @@ test("workflow writes still reject caller-supplied prototype keys before any req
         arguments: {
           workflowId: "wf_1",
           expectedVersionId: "v2",
-          pinData: { constructor: { polluted: true } },
+          settings: exactPrototypeMap(),
+        },
+      },
+      {
+        name: "n8n_workflows_update",
+        arguments: {
+          workflowId: "wf_1",
+          expectedVersionId: "v2",
+          pinData: exactPrototypeMap(),
+        },
+      },
+      {
+        name: "n8n_workflows_create",
+        arguments: {
+          ...CALLS.n8n_workflows_create,
+          settings: exactPrototypeMap(),
+        },
+      },
+      {
+        name: "n8n_workflows_create",
+        arguments: {
+          ...CALLS.n8n_workflows_create,
+          pinData: exactPrototypeMap(),
+        },
+      },
+      {
+        name: "n8n_credentials_create",
+        arguments: {
+          ...CALLS.n8n_credentials_create,
+          data: exactPrototypeMap(),
+        },
+      },
+      {
+        name: "n8n_credentials_update",
+        arguments: {
+          credentialId: "cred_1",
+          data: exactPrototypeMap(),
+          isPartialData: false,
         },
       },
     ];

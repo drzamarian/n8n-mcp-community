@@ -3,6 +3,7 @@ import { z } from "zod";
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 const IDENTIFIER = /^[A-Za-z0-9_-]{1,128}$/;
 const PROTOTYPE_SEGMENT = /^(?:__proto__|prototype|constructor)$/;
+const OWN_RECORD_ESCAPE_PREFIX = "\u0000n8n-mcp-own-key:";
 const MAX_SAFE_JSON_NODES = 20_000;
 export const MUTABLE_NODE_ROOTS = [
   "parameters",
@@ -57,6 +58,58 @@ export const tagName = z
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function escapedOwnRecordKey(key: string): string {
+  if (key === "__proto__") return `${OWN_RECORD_ESCAPE_PREFIX}p`;
+  return key.startsWith(OWN_RECORD_ESCAPE_PREFIX) ? `${OWN_RECORD_ESCAPE_PREFIX}k${key}` : key;
+}
+
+function restoredOwnRecordKey(key: string): string {
+  if (key === `${OWN_RECORD_ESCAPE_PREFIX}p`) return "__proto__";
+  const escapedPrefix = `${OWN_RECORD_ESCAPE_PREFIX}k`;
+  return key.startsWith(escapedPrefix) ? key.slice(escapedPrefix.length) : key;
+}
+
+type PreservingRecordSchema<ValueSchema extends z.ZodTypeAny> = z.ZodType<
+  Record<string, z.output<ValueSchema>>,
+  z.ZodTypeDef,
+  unknown
+>;
+
+// Zod v3 intentionally skips an own `__proto__` key while parsing records. Reversibly escape
+// every colliding key before its value validation. Safe-key records keep ordinary object
+// semantics; records with prototype-related keys use a null prototype so trusted upstream JSON
+// can never disappear or mutate Object.prototype before sanitization.
+export function preservingRecord<ValueSchema extends z.ZodTypeAny>(
+  valueSchema: ValueSchema,
+): PreservingRecordSchema<ValueSchema> {
+  const parsed = z.preprocess((value) => {
+    if (!isRecord(value)) return value;
+    const escaped = Object.create(null) as Record<string, unknown>;
+    for (const [key, child] of Object.entries(value)) {
+      escaped[escapedOwnRecordKey(key)] = child;
+    }
+    return escaped;
+  }, z.record(valueSchema));
+
+  return parsed.transform((value) => {
+    const restoredEntries = Object.entries(value).map(
+      ([key, child]) => [restoredOwnRecordKey(key), child] as const,
+    );
+    const restored = (
+      restoredEntries.some(([key]) => PROTOTYPE_SEGMENT.test(key)) ? Object.create(null) : {}
+    ) as Record<string, z.output<ValueSchema>>;
+    for (const [key, child] of restoredEntries) {
+      Object.defineProperty(restored, key, {
+        configurable: true,
+        enumerable: true,
+        value: child,
+        writable: true,
+      });
+    }
+    return restored;
+  });
 }
 
 export function assertSafeJson(value: unknown): void {

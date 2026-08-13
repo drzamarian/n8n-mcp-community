@@ -7,6 +7,7 @@ import {
   identifier,
   pageLimit,
   pathSegment,
+  preservingRecord,
   safeJsonValue,
 } from "./schemas.js";
 import { credentialTypeSchema } from "./response-contracts.js";
@@ -65,7 +66,7 @@ const usageWorkflowSchema = z.object({
         id: identifier().optional(),
         name: z.string().min(1).max(256),
         type: z.string().min(1).max(256),
-        credentials: z.record(workflowCredentialReferenceSchema).optional(),
+        credentials: preservingRecord(workflowCredentialReferenceSchema).optional(),
       }),
     )
     .max(1_000),
@@ -96,9 +97,9 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
         .string()
         .regex(/^[A-Za-z0-9_.-]{1,128}$/)
         .describe("Public n8n credential type returned by n8n_credentials_schema."),
-      data: z
-        .record(safeJsonValue)
-        .describe("Credential field values matching the selected public schema; never returned."),
+      data: preservingRecord(safeJsonValue).describe(
+        "Credential field values matching the selected public schema; never returned.",
+      ),
       isResolvable: z
         .boolean()
         .optional()
@@ -200,8 +201,7 @@ export const credentialTools: readonly ToolDefinition[] = Object.freeze([
         .regex(/^[A-Za-z0-9_.-]{1,128}$/)
         .optional()
         .describe("Replacement public credential type; requires replacement data when supplied."),
-      data: z
-        .record(safeJsonValue)
+      data: preservingRecord(safeJsonValue)
         .optional()
         .describe("Replacement or partial credential field values; never returned."),
       isGlobal: z.boolean().optional().describe("Optional replacement for the n8n global flag."),

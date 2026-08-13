@@ -21,14 +21,19 @@ result envelope in abbreviated form.
   tool-specific `data` contract in `tools/list`; the sections below are the
   normative human-readable detail. The sanitized envelope is validated against
   that same contract before a success is returned. The final serialized result is limited to
-  256 KiB. When a successful write or unsafe operation produces a
+  256 KiB. `redacted=true` means untrusted content was removed, replaced, or
+  shortened, so generic reads are safe projections rather than byte-exact
+  exports. When a successful operation with `RO=false` produces a
   result above that cap, the tool reports a truncated success summary
   (`truncated: true`, `outcome: "success"`, and bounded identity fields)
-  instead of an error, because the mutation has already been applied;
-  read-only tools keep the over-cap error. `n8n_introspect` applies the shared sanitizer and returns
-  its declared diagnostic schema directly, with one concise summary block and
-  one exact JSON fallback; its dedicated reducer and combined-output budget are
-  documented below.
+  instead of an error, because a mutation may already have been applied;
+  tools with `RO=true` keep the over-cap error even when their authorization
+  class is unsafe. When a generic read has no narrowing input, inspect the full
+  object in n8n. `n8n_introspect` applies the shared sanitizer and returns its
+  declared diagnostic schema directly, with one concise summary block and one
+  exact JSON fallback. Its dedicated limits are 128 KiB for structured output
+  and 320 KiB for the combined summary/JSON rendering; they are separate from
+  the generic envelope cap.
 - **HTTP:** Public API paths are relative to `/api/v1`; `/healthz` is the only
   root path. Requests are same-origin, redirect-free, time-bounded, and limited
   to 2 MiB in each direction.
@@ -813,25 +818,30 @@ Reads n8n's official insights summary, optionally constrained by date.
 ## n8n_audit_generate
 
 Requests n8n's instance security audit. The endpoint performs broad instance
-inspection and uses POST, so this server applies the conservative unsafe
-operation policy even though the scan is non-destructive.
+inspection and uses POST. The scan is read-only and safe to retry, but this
+server keeps it behind the conservative unsafe policy because the report can
+expose sensitive security posture.
 
 - **Policy and endpoint:** unsafe; `POST /audit`;
-  `RO=false, D=false, I=false, OW=true`. Requires mode `unsafe`.
+  `RO=true, D=false, I=true, OW=true`. Requires mode `unsafe`; the policy class
+  controls authorization, while the annotations describe external effects.
 - **Requirements:** Requires mode `unsafe` and API-key permission to generate the instance audit.
-- **Community Edition:** Verified on Community 2.30.5 and 2.30.7. The POST report endpoint remains unsafe-gated but is annotated non-destructive because it does not change instance resources or configuration; category support still depends on n8n.
-- **Inputs:** optional `categories`, an array of at most five selections
-  from `credentials`, `database`, `nodes`, `filesystem`, and `instance`;
-  optional `daysAbandonedWorkflow` integer from 1 through 3,650. Options are
-  sent under the official `additionalOptions` request property.
+- **Community Edition:** Verified on Community 2.30.5 and 2.30.7. Each call makes exactly one request and reads current state without changing instance resources or configuration. The ineffective upstream `daysAbandonedWorkflow` override is intentionally not exposed because n8n 2.30.x writes a legacy setting while its reporter reads typed configuration ([official 2.30.7 source](https://github.com/n8n-io/n8n/blob/n8n%402.30.7/packages/cli/src/security-audit/security-audit.service.ts)); category support still depends on n8n.
+- **Inputs:** optional `categories`, an array of 1–5 unique selections from
+  `credentials`, `database`, `nodes`, `filesystem`, and `instance`. Omit it for
+  n8n's complete default; an explicit empty or duplicate selection is rejected.
+  Selected categories are sent under the official `additionalOptions` request property.
 - **Returns:** a bounded map of n8n-defined report titles. Every report has an
   official `risk` category and typed `sections`; sections contain a title,
   description, recommendation, and either typed credential/node/package/file
   locations or bounded instance settings and version details.
+  A valid audit with no risks returns an empty map.
 - **Failures and privacy:** instance-wide audit output can reveal sensitive
   security posture and remains untrusted. Unsupported categories, permissions,
-  versions, or malformed reports return sanitized errors.
-- **Example:** `{ "categories": ["credentials"], "daysAbandonedWorkflow": 30 }` →
+  versions, or malformed reports return sanitized errors. If the report exceeds
+  safe output limits, retry with fewer categories when more than one was selected;
+  otherwise review the full report in n8n.
+- **Example:** `{ "categories": ["credentials"] }` →
   `{ "data": { "Credentials Risk Report": { "risk": "credentials", "sections": [{ "title": "Unused credentials", "description": "Credentials not used by any workflow.", "recommendation": "Delete credentials that are no longer required.", "location": [{ "kind": "credential", "id": "cred_1", "name": "n8n API" }] }] } }, "redacted": false, "untrusted": true }`.
 
 ## n8n_search_workflows

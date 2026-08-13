@@ -75,7 +75,7 @@ id_ed25519*
 /coverage/
 /.ruff_cache/
 /.playwright-mcp/
-/.DS_Store
+**/.DS_Store
 *.log
 *.tgz
 *.mcpb

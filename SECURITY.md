@@ -6,7 +6,7 @@ before public disclosure.
 
 ## Supported versions
 
-The latest maintained minor line — currently 0.2.x — receives security fixes.
+The latest maintained minor line — currently 0.3.x — receives security fixes.
 Older lines may be asked to upgrade when a safe backport is impractical.
 
 ## Report a vulnerability

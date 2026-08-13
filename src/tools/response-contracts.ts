@@ -1,7 +1,8 @@
 import { z } from "zod";
+import { preservingRecord } from "./schemas.js";
 
 function boundedRecord(valueSchema: z.ZodTypeAny, maximumKeys: number, maximumKeyLength: number) {
-  return z.record(valueSchema).superRefine((value, context) => {
+  return preservingRecord(valueSchema).superRefine((value, context) => {
     const keys = Object.keys(value);
     if (keys.length > maximumKeys) {
       context.addIssue({
@@ -47,7 +48,7 @@ function credentialDependency() {
     .object({
       if: z
         .object({
-          properties: boundedRecord(z.record(z.unknown()), 1_000, 256),
+          properties: boundedRecord(preservingRecord(z.unknown()), 1_000, 256),
           required: textArray().optional(),
         })
         .strict()
@@ -149,7 +150,7 @@ function auditedWorkflowNode() {
       type: z.string(),
       typeVersion: z.number().finite(),
       position: z.array(z.number().finite()).length(2),
-      parameters: z.record(z.unknown()),
+      parameters: preservingRecord(z.unknown()),
       iconData: z
         .object({
           type: z.string(),
@@ -169,10 +170,10 @@ function nextVersion() {
       createdAt: z.string(),
       description: z.string(),
       documentationUrl: z.string(),
-      hasBreakingChange: z.boolean(),
-      hasSecurityFix: z.boolean(),
-      hasSecurityIssue: z.boolean(),
-      securityIssueFixVersion: z.string(),
+      hasBreakingChange: z.boolean().nullable().optional(),
+      hasSecurityFix: z.boolean().nullable().optional(),
+      hasSecurityIssue: z.boolean().nullable().optional(),
+      securityIssueFixVersion: z.string().nullable().optional(),
     })
     .strict();
 }
@@ -210,6 +211,9 @@ function instanceAuditReport() {
 
 /**
  * n8n Community 2.30.7 Public API security-audit response.
+ *
+ * The endpoint's official empty-array state is normalized to an empty map by the tool handler
+ * before this report-map schema runs.
  *
  * Report titles are upstream-defined map keys, while every report, section, and location is
  * discriminated by the official n8n audit types. Breadth limits keep validation deterministic.
