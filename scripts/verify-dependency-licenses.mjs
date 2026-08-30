@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const EXPECTED_INVENTORY = Object.freeze({
   packagePaths: 224,
-  uniqueComponents: 222,
+  uniqueComponents: 223,
   runtimePackagePaths: 93,
   developmentPackagePaths: 131,
 });
