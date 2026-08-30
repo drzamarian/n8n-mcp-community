@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "packageVersion": "0.3.0",
   "npm": {
-    "sha256": "542113fc9429f8dd06acf965a4699f52265618c9e9ab5ab79156928bb24a571b",
+    "sha256": "3eda79b31dc3c9810030dded24926c3f83b4e287754a907e1443a15da7b1f118",
     "fileCount": 60,
     "files": [
       "CHANGELOG.md",
