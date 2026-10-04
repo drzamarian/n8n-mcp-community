@@ -6,6 +6,30 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.1] - Frozen release candidate
+
+Version 0.3.1 is a frozen release candidate. Availability is established only
+by matching npm provenance, GitHub Release assets and signatures, and MCP
+Registry readbacks; this immutable entry is not rewritten after publication.
+
+### Security
+
+- The reviewed runtime lock graph now resolves patched `fast-uri`, `hono`,
+  `ip-address`, and `qs` releases, clearing the complete npm production audit
+  instead of applying the incomplete package-by-package Dependabot proposals.
+- CodeQL initialization and analysis now use the same immutable v4.38.2 commit,
+  avoiding mixed-version workflow failures.
+- The release toolchain no longer loads the vulnerable, unfixed `node-forge`
+  dependency pulled by the upstream MCPB CLI. It validates the pinned official
+  v0.4 schema, creates and extracts bounded canonical ZIPs locally, and keeps
+  CMS signing and verification on OpenSSL.
+
+### Changed
+
+- Current compatible development releases of `@types/node`, ESLint, `globals`,
+  Prettier, `typescript-eslint`, and `yaml` keep the verification toolchain
+  current without changing the public 44-tool MCP contract.
+
 ## [0.3.0] - Frozen release candidate
 
 Version 0.3.0 is a frozen release candidate. Availability is established only
@@ -343,6 +367,7 @@ Registry readbacks; this immutable entry is not rewritten after publication.
   publishable history; authenticated public release receipts remain supported.
 
 [Unreleased]: #unreleased
+[0.3.1]: #031---frozen-release-candidate
 [0.3.0]: #030---frozen-release-candidate
 [0.2.1]: #021---frozen-release-candidate
 [0.2.0]: #020---frozen-release-candidate

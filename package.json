@@ -1,6 +1,6 @@
 {
   "name": "n8n-mcp-community",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "A security-focused MCP server for self-hosted n8n Community Edition.",
   "private": false,
   "releaseState": "candidate",
@@ -62,9 +62,6 @@
   "engines": {
     "node": ">=22.0.0"
   },
-  "overrides": {
-    "tmp": "0.2.7"
-  },
   "allowScripts": {},
   "scripts": {
     "audit:full": "node scripts/run-npm-audit.mjs full",
@@ -118,17 +115,16 @@
     "zod": "3.25.76"
   },
   "devDependencies": {
-    "@anthropic-ai/mcpb": "2.1.2",
     "@eslint/js": "10.0.1",
-    "@types/node": "22.20.1",
+    "@types/node": "22.20.5",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
-    "eslint": "10.9.1",
+    "eslint": "10.12.0",
     "fflate": "0.8.3",
-    "globals": "17.11.0",
-    "prettier": "3.9.6",
+    "globals": "17.13.0",
+    "prettier": "3.9.9",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.68.0",
-    "yaml": "2.9.0"
+    "typescript-eslint": "8.71.0",
+    "yaml": "2.9.1"
   }
 }

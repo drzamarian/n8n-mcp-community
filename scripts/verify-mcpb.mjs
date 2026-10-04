@@ -10,7 +10,8 @@ import {
   assertMcpbBaselineFileCounts,
   EXPECTED_MCPB_PLATFORMS,
 } from "./release-metadata-policy.mjs";
-import { resolveNodeEntrypoint, runPortableCommandSync } from "./portable-cli.mjs";
+import { isExcludedMcpbPath, unpackMcpbFile, validateMcpbManifestFile } from "./mcpb-format.mjs";
+import { runPortableCommandSync } from "./portable-cli.mjs";
 import { isForbiddenMcpbProjectPath } from "./public-boundary-policy.mjs";
 
 const root = process.cwd();
@@ -29,10 +30,6 @@ if (!contributorMode) {
 const bundle = path.join(sourceDist, `n8n-mcp-community-${packageJson.version}.mcpb`);
 const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "n8n-mcp-community-verify-"));
 const unpacked = path.join(temporaryRoot, "bundle");
-const mcpbCli = resolveNodeEntrypoint(
-  path.join(root, "node_modules", "@anthropic-ai", "mcpb", "dist", "cli", "cli.js"),
-  "MCPB",
-);
 const allowedLicenses = new Set([
   "Apache-2.0",
   "BSD-2-Clause",
@@ -50,10 +47,6 @@ function run(command, args) {
     maxBuffer: 16 * 1024 * 1024,
     timeout: 120_000,
   });
-}
-
-function runMcpb(args) {
-  return run(mcpbCli.command, [...mcpbCli.argumentPrefix, ...args]);
 }
 
 async function filesUnder(directory, prefix = "") {
@@ -82,9 +75,8 @@ try {
   if (!reproducible) {
     throw new Error("Two consecutive MCPB builds were not byte-identical.");
   }
-  runMcpb(["info", bundle]);
-  runMcpb(["unpack", bundle, unpacked]);
-  runMcpb(["validate", path.join(unpacked, "manifest.json")]);
+  await unpackMcpbFile(bundle, unpacked);
+  await validateMcpbManifestFile(path.join(unpacked, "manifest.json"));
 
   const manifest = JSON.parse(await readFile(path.join(unpacked, "manifest.json"), "utf8"));
   if (
@@ -116,6 +108,9 @@ try {
 
   const allBundleFiles = await filesUnder(unpacked);
   for (const relative of allBundleFiles) {
+    if (isExcludedMcpbPath(relative)) {
+      throw new Error(`MCPB retains a path excluded by the official pack contract: ${relative}`);
+    }
     const metadata = await lstat(path.join(unpacked, relative));
     if (!metadata.isFile() || (metadata.mode & 0o777) !== 0o644) {
       throw new Error(`MCPB file mode is not canonical 0644: ${relative}`);
