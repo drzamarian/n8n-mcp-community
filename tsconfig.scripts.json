@@ -9,5 +9,5 @@
     "declarationMap": false,
     "sourceMap": false
   },
-  "include": ["scripts/portable-cli.mjs"]
+  "include": ["scripts/mcpb-format.mjs", "scripts/portable-cli.mjs"]
 }

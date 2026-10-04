@@ -4,10 +4,10 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const EXPECTED_INVENTORY = Object.freeze({
-  packagePaths: 224,
-  uniqueComponents: 222,
+  packagePaths: 186,
+  uniqueComponents: 185,
   runtimePackagePaths: 93,
-  developmentPackagePaths: 131,
+  developmentPackagePaths: 93,
 });
 const ALLOWED_LICENSES = new Set([
   "Apache-2.0",
@@ -37,28 +37,12 @@ const NOTICE_EXCEPTIONS = new Map(
       repository: "https://github.com/estools/esrecurse.git",
     },
     {
-      name: "flora-colossus",
-      version: "2.0.0",
-      license: "MIT",
-      integrity:
-        "sha512-dz4HxH6pOvbUzZpZ/yXhafjbR2I8cenK5xL0KtBFb7U2ADsR+OwXifnxZjij/pZWF775uSCMzWVd+jDik2H2IA==",
-      repository: "https://github.com/MarshallOfSound/flora-colossus",
-    },
-    {
       name: "imurmurhash",
       version: "0.1.4",
       license: "MIT",
       integrity:
         "sha512-JmXMZ6wuvDmLiHEml9ykzqO6lwFbof0GG4IkcGaENdCRDDmMVnny7s5HsIgHCbaq0w2MyPhDqkhTUgS2LU2PHA==",
       repository: "https://github.com/jensyt/imurmurhash-js",
-    },
-    {
-      name: "keyv",
-      version: "4.5.4",
-      license: "MIT",
-      integrity:
-        "sha512-oxVHkHR/EJf2CNXnWxRLW6mg7JyCCUcG0DtEGmL2ctUo1PNTin1PUil+r/+4r5MpVgC/fn1kjsx7mjSujKqIpw==",
-      repository: "git+https://github.com/jaredwray/keyv.git",
     },
     {
       name: "natural-compare",
@@ -70,28 +54,7 @@ const NOTICE_EXCEPTIONS = new Map(
     },
   ].map((entry) => [`${entry.name}@${entry.version}`, entry]),
 );
-const LICENSE_SELECTIONS = new Map(
-  [
-    {
-      name: "node-forge",
-      version: "1.4.0",
-      declaredLicense: "(BSD-3-Clause OR GPL-2.0)",
-      selectedLicense: "BSD-3-Clause",
-      integrity:
-        "sha512-LarFH0+6VfriEhqMMcLX2F7SwSXeWwnEAJEsYm5QKWchiVYVvJyV9v7UDvUv+w5HO23ZpQTXDv/GxdDdMyOuoQ==",
-      repository: "https://github.com/digitalbazaar/forge",
-    },
-    {
-      name: "type-fest",
-      version: "0.21.3",
-      declaredLicense: "(MIT OR CC0-1.0)",
-      selectedLicense: "MIT",
-      integrity:
-        "sha512-t0rzBq87m3fVcduHDUFhKmyyX+9eo6WQjZvf51Ea/M0Q7+T374Jp1aUiyUl0GKxp8M/OETVHSDvmkyPgvX+X2w==",
-      repository: "sindresorhus/type-fest",
-    },
-  ].map((entry) => [`${entry.name}@${entry.version}`, entry]),
-);
+const LICENSE_SELECTIONS = new Map();
 
 async function readJson(path) {
   return JSON.parse(await readFile(path, "utf8"));

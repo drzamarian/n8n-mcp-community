@@ -13,23 +13,19 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { zipSync } from "fflate";
-import { resolveNodeEntrypoint, resolveNpmCli, runPortableCommandSync } from "./portable-cli.mjs";
+import { isExcludedMcpbPath, unpackMcpbFile, validateMcpbManifestFile } from "./mcpb-format.mjs";
+import { resolveNpmCli, runPortableCommandSync } from "./portable-cli.mjs";
 
 const root = process.cwd();
 const dist = path.join(root, "dist");
 const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "n8n-mcp-community-mcpb-"));
 const stage = path.join(temporaryRoot, "bundle");
 const server = path.join(stage, "server");
-const officialOutput = path.join(temporaryRoot, "official.mcpb");
 const canonicalStage = path.join(temporaryRoot, "canonical");
 const manifestSource = path.join(root, "mcpb", "manifest.json");
 const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
 const output = path.join(dist, `n8n-mcp-community-${packageJson.version}.mcpb`);
 const npmCli = resolveNpmCli("npm");
-const mcpbCli = resolveNodeEntrypoint(
-  path.join(root, "node_modules", "@anthropic-ai", "mcpb", "dist", "cli", "cli.js"),
-  "MCPB",
-);
 
 function run(command, args, cwd = root) {
   const env = { ...process.env, npm_config_loglevel: "error" };
@@ -67,6 +63,7 @@ async function filesUnder(directory, prefix = "") {
       throw new Error("MCPB staging cannot contain symbolic links.");
     }
     const relative = path.posix.join(prefix, entry.name);
+    if (isExcludedMcpbPath(relative)) continue;
     if (entry.isDirectory()) {
       output.push(...(await filesUnder(path.join(directory, entry.name), relative)));
     } else {
@@ -126,12 +123,12 @@ try {
     )}\n`,
   );
 
-  runCli(mcpbCli, ["validate", manifestSource]);
+  await validateMcpbManifestFile(manifestSource);
   await normalizeTimes(stage);
-  runCli(mcpbCli, ["pack", stage, officialOutput]);
-  runCli(mcpbCli, ["unpack", officialOutput, canonicalStage]);
+  await writeCanonicalZip(stage, output);
+  await unpackMcpbFile(output, canonicalStage);
+  await validateMcpbManifestFile(path.join(canonicalStage, "manifest.json"));
   const files = await writeCanonicalZip(canonicalStage, output);
-  runCli(mcpbCli, ["info", output]);
   const artifact = await stat(output);
   console.log(
     JSON.stringify(

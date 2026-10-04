@@ -5,20 +5,18 @@ licenses; `package-lock.json` is the exact dependency record and
 `npm run licenses:check` validates every installed package path.
 
 The npm runtime tarball does not bundle dependencies. The following packages
-are development-only transitive dependencies of ESLint or the MCPB build CLI.
+are development-only transitive dependencies of ESLint.
 Their published npm tarballs declare an SPDX license but omit a top-level
 LICENSE or NOTICE file. They are exact-pinned in the lockfile, are not present
 in the runtime package or MCPB, and are accepted only at the listed version,
 license, repository, and integrity hash:
 
-| Package                 | License      | Source or immutable package record                                                              |
-| ----------------------- | ------------ | ----------------------------------------------------------------------------------------------- |
-| `@humanfs/types@0.15.0` | Apache-2.0   | [humanwhocodes/humanfs](https://github.com/humanwhocodes/humanfs)                               |
-| `esrecurse@4.3.0`       | BSD-2-Clause | [estools/esrecurse](https://github.com/estools/esrecurse)                                       |
-| `flora-colossus@2.0.0`  | MIT          | [MarshallOfSound/flora-colossus](https://github.com/MarshallOfSound/flora-colossus/tree/v2.0.0) |
-| `imurmurhash@0.1.4`     | MIT          | [jensyt/imurmurhash-js](https://github.com/jensyt/imurmurhash-js)                               |
-| `keyv@4.5.4`            | MIT          | [npm registry record](https://registry.npmjs.org/keyv/4.5.4)                                    |
-| `natural-compare@1.4.0` | MIT          | [litejs/natural-compare-lite](https://github.com/litejs/natural-compare-lite)                   |
+| Package                 | License      | Source or immutable package record                                            |
+| ----------------------- | ------------ | ----------------------------------------------------------------------------- |
+| `@humanfs/types@0.15.0` | Apache-2.0   | [humanwhocodes/humanfs](https://github.com/humanwhocodes/humanfs)             |
+| `esrecurse@4.3.0`       | BSD-2-Clause | [estools/esrecurse](https://github.com/estools/esrecurse)                     |
+| `imurmurhash@0.1.4`     | MIT          | [jensyt/imurmurhash-js](https://github.com/jensyt/imurmurhash-js)             |
+| `natural-compare@1.4.0` | MIT          | [litejs/natural-compare-lite](https://github.com/litejs/natural-compare-lite) |
 
 Their exact SHA-512 integrity values are enforced in
 `scripts/verify-dependency-licenses.mjs`. Any version, license, integrity, role,
@@ -37,13 +35,14 @@ the license file; the official license text and required notice link are
 <https://blueoakcouncil.org/license/1.0.0>. It is not bundled in the npm runtime
 tarball.
 
-Two development-only MCPB build dependencies offer alternative licenses. This
-project selects the permissive alternative shown below. The gate pins the exact
-version, declared expression, selected license, repository, and integrity hash;
-both installed packages include the selected license text and neither is bundled
-in the npm runtime tarball or MCPB.
-
-| Package            | Declared expression       | Selected license |
-| ------------------ | ------------------------- | ---------------- |
-| `node-forge@1.4.0` | `BSD-3-Clause OR GPL-2.0` | BSD-3-Clause     |
-| `type-fest@0.21.3` | `MIT OR CC0-1.0`          | MIT              |
+The pinned `mcpb/mcpb-manifest-v0.4.schema.json` file comes from the official
+`@anthropic-ai/mcpb@2.1.2` source at immutable tag `v2.1.2` in
+[modelcontextprotocol/mcpb](https://github.com/modelcontextprotocol/mcpb/tree/v2.1.2).
+Copyright 2025 Anthropic, PBC. It is used under the MIT License reproduced in
+`mcpb/OFFICIAL_SCHEMA_LICENSE`. The immutable upstream schema has SHA-256
+`068557824c651d6d49b86ad132adeafe62ca788d918b3e1e2b224bf0f91320fd`.
+The checked-in JSON is semantically identical but formatted with the repository's
+Prettier policy; its SHA-256 is
+`dae6c4a11da73fcce9adda27dface6049a90b31765623e0a445e485b321e4d46`.
+The schema is a development-time validator and is not included in the npm
+runtime tarball or the MCPB artifact.

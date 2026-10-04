@@ -92,7 +92,7 @@ unsafe tools.
 
 Global npm users do not edit the client entry. If you followed the 0.1.x npx
 guide, your client is pinned to `n8n-mcp-community@0.1.4`: replace that argument
-with `n8n-mcp-community@latest` or `n8n-mcp-community@0.3.0`. Restart the client,
+with `n8n-mcp-community@latest` or `n8n-mcp-community@0.3.1`. Restart the client,
 run the npx version check below, and confirm the 44/5/4 inventory.
 
 If custom code sends raw tool-call JSON, remove the former `confirmation` field

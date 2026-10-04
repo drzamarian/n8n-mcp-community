@@ -53,15 +53,14 @@ fails on:
 - missing license metadata;
 - a package that declares a license or notice file but omits it.
 
-The current source candidate covers 224 installed package paths representing
-222 unique components: 93 runtime paths and 131 development paths. After two
-explicit permissive-alternative selections, the effective licenses are 184 MIT,
-15 ISC, 13 Apache-2.0, 7 BSD-2-Clause, 4 BSD-3-Clause, and 1
-BlueOak-1.0.0, with no missing integrity, license, or documented notice. Six
-exact-pinned development-only packages use the reviewed missing-file exception,
-and two development-only packages use exact-pinned alternative-license
-selections described in [third-party notices](../THIRD_PARTY_NOTICES.md). These
-counts must be regenerated after any lockfile change.
+The current source candidate covers 186 installed package paths representing
+185 unique components: 93 runtime paths and 93 development paths. The effective
+licenses are 151 MIT, 11 ISC, 13 Apache-2.0, 7 BSD-2-Clause, 3 BSD-3-Clause,
+and 1 BlueOak-1.0.0, with no missing integrity, license, or documented notice.
+Four exact-pinned development-only packages use the reviewed missing-file
+exception described in [third-party notices](../THIRD_PARTY_NOTICES.md). No
+package currently needs an alternative-license selection. These counts must be
+regenerated after any lockfile change.
 
 PyYAML 6.0.3 was used as local audit tooling to parse official OpenAPI material
 and compare endpoint schemas. It is not imported by the TypeScript runtime or
@@ -83,9 +82,9 @@ Generate the release runtime CycloneDX SBOM from the committed lockfile with:
 npm run sbom > sbom.cdx.json
 ```
 
-This runtime-only SBOM contains 75 unique production components for the shared
+This runtime-only SBOM contains 78 unique production components for the shared
 npm/MCPB runtime graph. Maintainers may separately generate the complete
-222-component development graph with `npm run sbom:full`; it is audit evidence,
+185-component graph with `npm run sbom:full`; it is audit evidence,
 not the release artifact SBOM. Every release candidate must carry a runtime
 SBOM for the npm package and MCPB, plus SHA-256 checksums and signatures tied to
 the exact Git revision; availability is established only by the corresponding

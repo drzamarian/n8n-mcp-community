@@ -3,7 +3,8 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { resolveNodeEntrypoint, resolveNpmCli, runPortableCommandSync } from "./portable-cli.mjs";
+import { unpackMcpbFile } from "./mcpb-format.mjs";
+import { resolveNpmCli, runPortableCommandSync } from "./portable-cli.mjs";
 import { canonicalSbomSha256 } from "./verify-release-artifacts.mjs";
 
 // The npm tarball and MCPB digests cover the gzip/deflate layer, which is produced by the Node.js
@@ -40,10 +41,6 @@ const BASELINE_NPM_VERSION = "12.0.1";
     );
   }
 }
-const mcpbCli = resolveNodeEntrypoint(
-  path.join(root, "node_modules", "@anthropic-ai", "mcpb", "dist", "cli", "cli.js"),
-  "MCPB",
-);
 const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "n8n-artifact-baseline-"));
 
 function run(command, args) {
@@ -94,7 +91,7 @@ try {
   run(process.execPath, [path.join(root, "scripts", "build-mcpb.mjs")]);
   const mcpbFile = path.join(root, "dist", `n8n-mcp-community-${packageJson.version}.mcpb`);
   const unpacked = path.join(temporaryRoot, "mcpb");
-  runCli(mcpbCli, ["unpack", mcpbFile, unpacked]);
+  await unpackMcpbFile(mcpbFile, unpacked);
   const mcpbFiles = await filesUnder(unpacked);
   const runtimeFiles = mcpbFiles
     .filter((file) => file.startsWith("server/dist/"))

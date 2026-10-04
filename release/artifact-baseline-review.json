@@ -1,14 +1,14 @@
 {
   "schemaVersion": 2,
-  "baselineSha256": "d88c9023ff1acf8b763349a712a899874dda8068e47a2bed1dbab9a0e48b356a",
-  "sourceTreeSha256": "257f6fec261b483c7b9fba2a875ba2637c95f005d5cadeb8fa29148502529114",
-  "sourceFileCount": 139,
+  "baselineSha256": "fe45c63bfe4c7accb08a10af2665ba0de0403879565ef4805fd7ec472a41b321",
+  "sourceTreeSha256": "df3f5fb66d34cd8e1ad967d1d2f14dcb68b52c9f931dc60bf78358df9add7fdb",
+  "sourceFileCount": 143,
   "reviewProcedure": "inspect-diff-and-type-exact-digests-in-an-authenticated-local-terminal",
   "approval": {
     "reviewer": "Walter Zamarian Jr.",
     "localUsername": "walter",
     "approvalMethod": "interactive-local-terminal",
-    "approvedAt": "2026-08-13T16:50:55.555Z",
-    "approvalEvidenceHmacSha256": "4658a3d7fa71408820f5b775f47c22232c9523be76f5e536c26bd7b1fdb3840d"
+    "approvedAt": "2026-10-04T02:24:37.481Z",
+    "approvalEvidenceHmacSha256": "e4595dc1d633159ea3d0f0105cb11698bb184451d229cfcc95445a0ada9aaad9"
   }
 }
