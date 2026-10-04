@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { parseAllDocuments, stringify } from "yaml";
 
 const EXPECTED_RELEASE_SEMANTIC_SHA256 =
-  "48063a2660bd937bb00586bb2f8c0d4a044596874a4704704769869bd0e0eaf2";
+  "8e4fbef339968fd89b8e6659046701202ba2f112083ed05da5f7e28f577b6824";
 
 function fail(message) {
   throw new Error(message);
@@ -120,6 +120,51 @@ const PUBLISH_RUN = Object.freeze([
   'npm publish "${packages[0]}" --access public --provenance --ignore-scripts',
 ]);
 
+const NPM_PROPAGATION_RUN = Object.freeze([
+  "set -euo pipefail",
+  'package_name="$(node -p \'require("./package.json").name\')"',
+  'package_version="$(node -p \'require("./package.json").version\')"',
+  'package_spec="${package_name}@${package_version}"',
+  "for attempt in $(seq 1 24); do",
+  'metadata="$(npm view "${package_spec}" dist.tarball --json 2>/dev/null || true)"',
+  'tarball_url="$(jq -r \'if type == "string" then . else empty end\' <<<"${metadata}")"',
+  'if [ -n "${tarball_url}" ]; then',
+  'expected_url="https://registry.npmjs.org/${package_name}/-/${package_name}-${package_version}.tgz"',
+  'test "${tarball_url}" = "${expected_url}"',
+  'if observed_sha256="$(curl --fail --location --silent --show-error --max-time 60 "${tarball_url}" | sha256sum | cut -d \' \' -f 1)"; then',
+  'test "${observed_sha256}" = "${APPROVED_NPM_TARBALL_SHA256}"',
+  "exit 0",
+  "fi",
+  "fi",
+  'if [ "${attempt}" -eq 24 ]; then',
+  'echo "The exact npm tarball did not become public before the release deadline." >&2',
+  "exit 1",
+  "fi",
+  "sleep 5",
+  "done",
+]);
+
+const REGISTRY_PUBLISH_RUN = Object.freeze([
+  "set -euo pipefail",
+  "./mcp-publisher login github-oidc",
+  "for attempt in $(seq 1 6); do",
+  'if output="$(./mcp-publisher publish server.json 2>&1)"; then',
+  "printf '%s\\n' \"${output}\"",
+  "exit 0",
+  "else",
+  "publish_status=$?",
+  "fi",
+  "printf '%s\\n' \"${output}\" >&2",
+  "if ! grep -Fq 'A newly published release can take a moment to appear on the registry' <<<\"${output}\"; then",
+  'exit "${publish_status}"',
+  "fi",
+  'if [ "${attempt}" -eq 6 ]; then',
+  'exit "${publish_status}"',
+  "fi",
+  "sleep 10",
+  "done",
+]);
+
 const VALIDATE_DISPATCH_RUN = Object.freeze([
   "set -euo pipefail",
   'test "${GITHUB_REF}" = "refs/tags/${RELEASE_TAG}"',
@@ -173,6 +218,7 @@ const EXPECTED_STEP_NAMES = Object.freeze({
     "Download Walter's externally signed MCPB from the draft release",
     "Verify the signed handoff, identity, and byte-for-byte runtime parity",
     "Publish the reviewed npm tarball through trusted publishing",
+    "Wait for the exact npm tarball to become public",
     "Install the pinned MCP Registry publisher",
     "Publish validated metadata to the MCP Registry",
     "Complete the existing draft GitHub release for the exact tag",
@@ -293,9 +339,16 @@ export function verifyReleaseWorkflow(workflow, enforceSemanticHash = true) {
     publishSteps,
     "Publish the reviewed npm tarball through trusted publishing",
   );
+  const npmPropagation = namedStep(publishSteps, "Wait for the exact npm tarball to become public");
+  const registryPublication = namedStep(
+    publishSteps,
+    "Publish validated metadata to the MCP Registry",
+  );
   requireExactRun(approval, APPROVAL_RUN, "Publication approval step");
   requireExactRun(verifier, SIGNED_VERIFIER_RUN, "Signed-MCPB verification step");
   requireExactRun(publication, PUBLISH_RUN, "npm publication step");
+  requireExactRun(npmPropagation, NPM_PROPAGATION_RUN, "npm propagation step");
+  requireExactRun(registryPublication, REGISTRY_PUBLISH_RUN, "MCP Registry publication step");
   const expectedApprovalEnvironment = {
     RELEASE_TAG: "${{ inputs.tag }}",
     RELEASE_CONFIRMATION: "${{ inputs.confirmation }}",
@@ -316,11 +369,28 @@ export function verifyReleaseWorkflow(workflow, enforceSemanticHash = true) {
   ) {
     fail("The npm publication step must rebind the separately approved tarball digest.");
   }
+  if (
+    JSON.stringify(record(npmPropagation.env, "npm propagation environment")) !==
+    JSON.stringify({
+      APPROVED_NPM_TARBALL_SHA256: "${{ inputs.npm_tarball_sha256 }}",
+    })
+  ) {
+    fail("The npm propagation step must verify the separately approved tarball digest.");
+  }
   const approvalIndex = publishSteps.indexOf(approval);
   const verifierIndex = publishSteps.indexOf(verifier);
   const publishIndex = publishSteps.indexOf(publication);
-  if (!(approvalIndex < verifierIndex && verifierIndex < publishIndex)) {
-    fail("Artifact approval and signature verification must precede npm publication.");
+  const propagationIndex = publishSteps.indexOf(npmPropagation);
+  const registryIndex = publishSteps.indexOf(registryPublication);
+  if (!(
+    approvalIndex < verifierIndex &&
+    verifierIndex < publishIndex &&
+    publishIndex < propagationIndex &&
+    propagationIndex < registryIndex
+  )) {
+    fail(
+      "Artifact approval, signature verification, npm publication, propagation, and Registry publication must remain ordered.",
+    );
   }
 
   const executableText = allSteps
