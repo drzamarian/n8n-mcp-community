@@ -221,6 +221,32 @@ jobs:
           test "${#packages[@]}" -eq 1
           test "$(sha256sum "${packages[0]}" | cut -d ' ' -f 1)" = "${APPROVED_NPM_TARBALL_SHA256}"
           npm publish "${packages[0]}" --access public --provenance --ignore-scripts
+      - name: Wait for the exact npm tarball to become public
+        shell: bash
+        env:
+          APPROVED_NPM_TARBALL_SHA256: ${{ inputs.npm_tarball_sha256 }}
+        run: |
+          set -euo pipefail
+          package_name="$(node -p 'require("./package.json").name')"
+          package_version="$(node -p 'require("./package.json").version')"
+          package_spec="${package_name}@${package_version}"
+          for attempt in $(seq 1 24); do
+            metadata="$(npm view "${package_spec}" dist.tarball --json 2>/dev/null || true)"
+            tarball_url="$(jq -r 'if type == "string" then . else empty end' <<<"${metadata}")"
+            if [ -n "${tarball_url}" ]; then
+              expected_url="https://registry.npmjs.org/${package_name}/-/${package_name}-${package_version}.tgz"
+              test "${tarball_url}" = "${expected_url}"
+              if observed_sha256="$(curl --fail --location --silent --show-error --max-time 60 "${tarball_url}" | sha256sum | cut -d ' ' -f 1)"; then
+                test "${observed_sha256}" = "${APPROVED_NPM_TARBALL_SHA256}"
+                exit 0
+              fi
+            fi
+            if [ "${attempt}" -eq 24 ]; then
+              echo "The exact npm tarball did not become public before the release deadline." >&2
+              exit 1
+            fi
+            sleep 5
+          done
       - name: Install the pinned MCP Registry publisher
         shell: bash
         run: |
@@ -234,9 +260,26 @@ jobs:
           chmod 0755 mcp-publisher
           ./mcp-publisher --version 2>&1 | grep -F 'mcp-publisher 1.7.9'
       - name: Publish validated metadata to the MCP Registry
+        shell: bash
         run: |
+          set -euo pipefail
           ./mcp-publisher login github-oidc
-          ./mcp-publisher publish server.json
+          for attempt in $(seq 1 6); do
+            if output="$(./mcp-publisher publish server.json 2>&1)"; then
+              printf '%s\n' "${output}"
+              exit 0
+            else
+              publish_status=$?
+            fi
+            printf '%s\n' "${output}" >&2
+            if ! grep -Fq 'A newly published release can take a moment to appear on the registry' <<<"${output}"; then
+              exit "${publish_status}"
+            fi
+            if [ "${attempt}" -eq 6 ]; then
+              exit "${publish_status}"
+            fi
+            sleep 10
+          done
       - name: Complete the existing draft GitHub release for the exact tag
         shell: bash
         env:
