@@ -6,7 +6,6 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
-import { signMcpbFile } from "@anthropic-ai/mcpb/node";
 import { trustedSystemEnv } from "./portable-cli.mjs";
 import { PUBLIC_CERTIFICATE_NAMES } from "./public-boundary-policy.mjs";
 
@@ -170,6 +169,55 @@ async function runOpenSsl(args) {
     });
   } catch {
     throw new Error("MCPB CMS signature or pinned certificate-chain verification failed.");
+  }
+}
+
+async function signMcpbFileWithOpenSsl(mcpbPath, certificatePath, keyPath, intermediates = []) {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "n8n-mcpb-test-signature-"));
+  try {
+    const signaturePath = path.join(temporaryRoot, "signature.der");
+    const intermediatesPath = path.join(temporaryRoot, "intermediates.pem");
+    const arguments_ = [
+      "cms",
+      "-sign",
+      "-binary",
+      "-in",
+      mcpbPath,
+      "-signer",
+      certificatePath,
+      "-inkey",
+      keyPath,
+      "-outform",
+      "DER",
+      "-out",
+      signaturePath,
+      "-md",
+      "sha256",
+      "-nosmimecap",
+    ];
+    if (intermediates.length > 0) {
+      await writeFile(
+        intermediatesPath,
+        Buffer.concat(await Promise.all(intermediates.map((file) => readFile(file)))),
+        { mode: 0o600 },
+      );
+      arguments_.push("-certfile", intermediatesPath);
+    }
+    await runOpenSsl(arguments_);
+    const [payload, signature] = await Promise.all([readFile(mcpbPath), readFile(signaturePath)]);
+    assert(
+      signature.length > 0 && signature.length <= 0xffffffff,
+      "CMS signature size is invalid.",
+    );
+    const length = Buffer.alloc(4);
+    length.writeUInt32LE(signature.length);
+    await writeFile(
+      mcpbPath,
+      Buffer.concat([payload, SIGNATURE_HEADER, length, signature, SIGNATURE_FOOTER]),
+      { mode: 0o600 },
+    );
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
   }
 }
 
@@ -393,7 +441,7 @@ async function runSelfTest() {
     const unconfiguredPath = path.join(temporaryRoot, "unconfigured.json");
     await writeFile(unsignedPath, "synthetic-reviewed-candidate", { mode: 0o600 });
     await copyFile(unsignedPath, signedPath);
-    signMcpbFile(signedPath, leaf.certificatePath, leaf.keyPath);
+    await signMcpbFileWithOpenSsl(signedPath, leaf.certificatePath, leaf.keyPath);
 
     const pinnedRootPath = path.join(temporaryRoot, PUBLIC_CERTIFICATE_NAMES.trustAnchor);
     await copyFile(root.certificatePath, pinnedRootPath);
@@ -491,7 +539,7 @@ async function runSelfTest() {
 
     const wrongPurposeSignedPath = path.join(temporaryRoot, "wrong-purpose.mcpb");
     await copyFile(unsignedPath, wrongPurposeSignedPath);
-    signMcpbFile(
+    await signMcpbFileWithOpenSsl(
       wrongPurposeSignedPath,
       wrongPurposeLeaf.certificatePath,
       wrongPurposeLeaf.keyPath,
@@ -542,7 +590,7 @@ async function runSelfTest() {
     const magicSignedPath = path.join(temporaryRoot, "magic-payload-signed.mcpb");
     await writeFile(magicUnsignedPath, magicPayload, { mode: 0o600 });
     await copyFile(magicUnsignedPath, magicSignedPath);
-    signMcpbFile(magicSignedPath, leaf.certificatePath, leaf.keyPath);
+    await signMcpbFileWithOpenSsl(magicSignedPath, leaf.certificatePath, leaf.keyPath);
     const magicSignedContent = Buffer.from(await readFile(magicSignedPath));
     const magicDigest = sha256(magicSignedContent);
     const magicResult = await verifySignedMcpb(
