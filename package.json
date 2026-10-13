@@ -1,6 +1,6 @@
 {
   "name": "n8n-mcp-community",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "A security-focused MCP server for self-hosted n8n Community Edition.",
   "private": false,
   "releaseState": "candidate",
@@ -87,6 +87,7 @@
     "check:registry": "node scripts/verify-registry-schema.mjs",
     "check:readme-count": "node scripts/verify-readme-test-count.mjs",
     "check:release": "node scripts/verify-release-policy.mjs",
+    "check:sbom": "node scripts/generate-runtime-sbom.mjs --check",
     "docs:check": "npm run build && node scripts/verify-documentation.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -97,7 +98,7 @@
     "prepublishOnly": "npm run verify",
     "demo:check": "node scripts/render-demo-gif.mjs --check",
     "demo:render": "node scripts/render-demo-gif.mjs",
-    "sbom": "npm sbom --package-lock-only --omit=dev --sbom-format cyclonedx --sbom-type application",
+    "sbom": "node scripts/generate-runtime-sbom.mjs",
     "sbom:full": "npm sbom --package-lock-only --sbom-format cyclonedx --sbom-type application",
     "test:contract": "npm run build && npm run test:compile && node --test --test-concurrency=1 .test-dist/test/mcp-contract.test.js .test-dist/test/n8n-client.test.js .test-dist/test/tool-contract.test.js",
     "test:coverage": "npm run build && npm run test:compile && node --test --test-concurrency=1 --experimental-test-coverage --test-coverage-include='.test-dist/src/**/*.js' --test-coverage-exclude='.test-dist/src/index.js' --test-coverage-lines=90 --test-coverage-functions=90 --test-coverage-branches=85 .test-dist/test/**/*.test.js",
@@ -105,13 +106,13 @@
     "test:examples": "npm run build && node scripts/verify-examples.mjs",
     "test": "npm run build && npm run test:compile && node --test --test-concurrency=1 .test-dist/test/**/*.test.js",
     "typecheck": "tsc --noEmit --pretty false && tsc -p tsconfig.scripts.json --pretty false",
-    "check": "npm run format:check && npm run licenses:check && npm run lint && npm run typecheck && npm test && npm run check:readme-count && npm run check:metadata && npm run check:release && npm run check:docs && npm run check:language && npm run test:examples && npm run check:inventory && npm run check:public-boundary && npm run check:artifact-review",
-    "check:contributor": "npm run format:check && npm run licenses:check && npm run lint && npm run typecheck && npm test && npm run check:readme-count && npm run check:metadata && npm run check:release && npm run check:docs && npm run check:language && npm run test:examples && npm run check:inventory && npm run check:public-boundary",
+    "check": "npm run format:check && npm run licenses:check && npm run check:sbom && npm run lint && npm run typecheck && npm test && npm run check:readme-count && npm run check:metadata && npm run check:release && npm run check:docs && npm run check:language && npm run test:examples && npm run check:inventory && npm run check:public-boundary && npm run check:artifact-review",
+    "check:contributor": "npm run format:check && npm run licenses:check && npm run check:sbom && npm run lint && npm run typecheck && npm test && npm run check:readme-count && npm run check:metadata && npm run check:release && npm run check:docs && npm run check:language && npm run test:examples && npm run check:inventory && npm run check:public-boundary",
     "verify": "npm run check && npm run test:coverage && npm run check:distribution && npm run check:consumer && npm run check:registry",
     "verify:contributor": "npm run check:contributor && npm run test:coverage && npm run check:distribution:contributor && npm run check:consumer && npm run check:registry"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.30.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "zod": "3.25.76"
   },
   "devDependencies": {
@@ -124,7 +125,7 @@
     "globals": "17.13.0",
     "prettier": "3.9.9",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.71.0",
+    "typescript-eslint": "8.71.2",
     "yaml": "2.9.1"
   }
 }
