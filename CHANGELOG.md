@@ -6,6 +6,27 @@ All notable changes to this project will be documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.2] - Frozen release candidate
+
+Version 0.3.2 is a frozen release candidate. Availability is established only
+by matching npm provenance, GitHub Release assets and signatures, and MCP
+Registry readbacks; this immutable entry is not rewritten after publication.
+
+### Security
+
+- The runtime now uses `@modelcontextprotocol/sdk` 1.32.1, which removes the
+  vulnerable `1.30.0` release identified by GHSA-6qxp-vccf-f47h.
+- The resolved Express dependency is now 5.3.0 and uses `proxy-addr` 2.0.8,
+  clearing GHSA-jqcg-44mw-7w3h from both production and complete npm audits.
+- Runtime SBOM generation now derives its inventory from every production
+  lockfile path and rejects omissions, including packages that npm also sees
+  through a development path.
+
+### Changed
+
+- `typescript-eslint` is updated to 8.71.2. This maintenance release does not
+  change the public 44-tool, 5-resource, and 4-prompt MCP contract.
+
 ## [0.3.1] - Frozen release candidate
 
 Version 0.3.1 is a frozen release candidate. Availability is established only
@@ -367,6 +388,7 @@ Registry readbacks; this immutable entry is not rewritten after publication.
   publishable history; authenticated public release receipts remain supported.
 
 [Unreleased]: #unreleased
+[0.3.2]: #032---frozen-release-candidate
 [0.3.1]: #031---frozen-release-candidate
 [0.3.0]: #030---frozen-release-candidate
 [0.2.1]: #021---frozen-release-candidate

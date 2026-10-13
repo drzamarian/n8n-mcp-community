@@ -105,17 +105,7 @@ try {
   const serverJsonSha256 = createHash("sha256")
     .update(await readFile(path.join(root, "server.json")))
     .digest("hex");
-  const sbomCanonicalSha256 = canonicalSbomSha256(
-    runCli(npmCli, [
-      "sbom",
-      "--package-lock-only",
-      "--omit=dev",
-      "--sbom-format",
-      "cyclonedx",
-      "--sbom-type",
-      "application",
-    ]),
-  );
+  const sbomCanonicalSha256 = canonicalSbomSha256(runCli(npmCli, ["run", "--silent", "sbom"]));
 
   const baseline = {
     schemaVersion: 1,

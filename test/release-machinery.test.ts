@@ -39,6 +39,39 @@ interface ReleaseArtifactsModule {
   ): { serverJsonSha256: string; sbomCanonicalSha256: string };
 }
 
+interface RuntimeSbomModule {
+  createRuntimeSbom(
+    fullSbom: unknown,
+    lock: unknown,
+  ): {
+    components: Array<{
+      "bom-ref": string;
+      name: string;
+      version: string;
+      purl: string;
+      scope: string;
+      properties?: Array<{ name: string; value?: string }>;
+    }>;
+    dependencies: Array<{ ref: string; dependsOn: string[] }>;
+    metadata: {
+      component: {
+        "bom-ref": string;
+        name: string;
+        version: string;
+        purl: string;
+      };
+    };
+  };
+  assertRuntimeSbomParity(
+    sbom: unknown,
+    lock: unknown,
+  ): {
+    runtimePackagePaths: number;
+    runtimeComponents: number;
+    runtimeDependencyEntries: number;
+  };
+}
+
 interface MetadataPolicyModule {
   assertMcpbBaselineFileCounts(
     baseline: unknown,
@@ -337,6 +370,170 @@ test("release-artifact digests bind server.json and the canonical SBOM", async (
   assert.throws(
     () => releaseArtifacts.verifyReleaseArtifactDigests({}, { serverJson, sbom: sbomReviewed }),
     /no reviewed release-digest anchor/,
+  );
+});
+
+test("runtime SBOM keeps every production component even when npm also sees a dev path", async () => {
+  const runtimeSbom = await loadScript<RuntimeSbomModule>("generate-runtime-sbom.mjs");
+  const lock = {
+    packages: {
+      "": {
+        name: "example",
+        version: "1.0.0",
+        dependencies: { "runtime-a": "1.0.0" },
+        devDependencies: { "shared-b": "2.0.0", "dev-c": "3.0.0" },
+      },
+      "node_modules/runtime-a": {
+        version: "1.0.0",
+        dependencies: { "shared-b": "2.0.0" },
+      },
+      "node_modules/shared-b": { version: "2.0.0" },
+      "node_modules/runtime-a/node_modules/shared-b": { version: "2.0.0", optional: true },
+      "node_modules/dev-c": { version: "3.0.0", dev: true },
+    },
+  };
+  const fullSbom = {
+    bomFormat: "CycloneDX",
+    metadata: {
+      component: {
+        "bom-ref": "example@1.0.0",
+        name: "example",
+        version: "1.0.0",
+        purl: "pkg:npm/example@1.0.0",
+      },
+    },
+    components: [
+      {
+        "bom-ref": "runtime-a@1.0.0",
+        name: "runtime-a",
+        version: "1.0.0",
+        purl: "pkg:npm/runtime-a@1.0.0",
+        scope: "required",
+        properties: [],
+      },
+      {
+        "bom-ref": "shared-b@2.0.0",
+        name: "shared-b",
+        version: "2.0.0",
+        purl: "pkg:npm/shared-b@2.0.0",
+        scope: "optional",
+        properties: [{ name: "cdx:npm:package:development", value: "true" }],
+      },
+      {
+        "bom-ref": "dev-c@3.0.0",
+        name: "dev-c",
+        version: "3.0.0",
+        purl: "pkg:npm/dev-c@3.0.0",
+        scope: "optional",
+        properties: [{ name: "cdx:npm:package:development", value: "true" }],
+      },
+    ],
+    dependencies: [
+      { ref: "example@1.0.0", dependsOn: ["runtime-a@1.0.0", "dev-c@3.0.0"] },
+      { ref: "runtime-a@1.0.0", dependsOn: ["shared-b@2.0.0"] },
+      { ref: "shared-b@2.0.0", dependsOn: [] },
+      { ref: "dev-c@3.0.0", dependsOn: [] },
+    ],
+  };
+
+  const generated = runtimeSbom.createRuntimeSbom(fullSbom, lock);
+  assert.deepEqual(
+    generated.components.map((component) => component["bom-ref"]),
+    ["runtime-a@1.0.0", "shared-b@2.0.0"],
+  );
+  assert.equal(generated.components[1]?.scope, "required");
+  assert.deepEqual(generated.components[1]?.properties, []);
+  const contextLabeledSource = structuredClone(fullSbom);
+  contextLabeledSource.metadata.component.name = "workspace";
+  contextLabeledSource.components[0]!.name = "incorrect-upstream-label";
+  const normalized = runtimeSbom.createRuntimeSbom(contextLabeledSource, lock);
+  assert.equal(normalized.metadata.component.name, "example");
+  assert.equal(normalized.components[0]?.name, "runtime-a");
+  assert.deepEqual(generated.dependencies, [
+    { ref: "example@1.0.0", dependsOn: ["runtime-a@1.0.0"] },
+    { ref: "runtime-a@1.0.0", dependsOn: ["shared-b@2.0.0"] },
+    { ref: "shared-b@2.0.0", dependsOn: [] },
+  ]);
+  assert.deepEqual(runtimeSbom.assertRuntimeSbomParity(generated, lock), {
+    runtimePackagePaths: 3,
+    runtimeComponents: 2,
+    runtimeDependencyEntries: 3,
+  });
+
+  const missing = structuredClone(generated);
+  missing.components.pop();
+  assert.throws(
+    () => runtimeSbom.assertRuntimeSbomParity(missing, lock),
+    /component inventory differs/,
+  );
+
+  const extra = structuredClone(generated);
+  extra.components.push({
+    "bom-ref": "dev-c@3.0.0",
+    name: "dev-c",
+    version: "3.0.0",
+    purl: "pkg:npm/dev-c@3.0.0",
+    scope: "optional",
+  });
+  assert.throws(
+    () => runtimeSbom.assertRuntimeSbomParity(extra, lock),
+    /component inventory differs/,
+  );
+
+  const leakedEdge = structuredClone(generated);
+  leakedEdge.dependencies[0]?.dependsOn.push("dev-c@3.0.0");
+  assert.throws(
+    () => runtimeSbom.assertRuntimeSbomParity(leakedEdge, lock),
+    /references a non-runtime component/,
+  );
+
+  const falseSharedRootEdge = structuredClone(generated);
+  falseSharedRootEdge.dependencies[0]?.dependsOn.push("shared-b@2.0.0");
+  assert.throws(
+    () => runtimeSbom.assertRuntimeSbomParity(falseSharedRootEdge, lock),
+    /dependency edges differ.*example@1\.0\.0/,
+  );
+
+  const missingEdge = structuredClone(generated);
+  missingEdge.dependencies[1]!.dependsOn = [];
+  assert.throws(
+    () => runtimeSbom.assertRuntimeSbomParity(missingEdge, lock),
+    /dependency edges differ.*runtime-a@1\.0\.0/,
+  );
+
+  const inventedRuntimeEdge = structuredClone(generated);
+  inventedRuntimeEdge.dependencies[2]?.dependsOn.push("runtime-a@1.0.0");
+  assert.throws(
+    () => runtimeSbom.assertRuntimeSbomParity(inventedRuntimeEdge, lock),
+    /dependency edges differ.*shared-b@2\.0\.0/,
+  );
+
+  const duplicateEdge = structuredClone(generated);
+  duplicateEdge.dependencies[0]?.dependsOn.push("runtime-a@1.0.0");
+  assert.throws(
+    () => runtimeSbom.assertRuntimeSbomParity(duplicateEdge, lock),
+    /repeats a target reference/,
+  );
+
+  const mislabeled = structuredClone(generated);
+  mislabeled.components[0]?.properties?.push({
+    name: "cdx:npm:package:development",
+    value: "true",
+  });
+  assert.throws(() => runtimeSbom.assertRuntimeSbomParity(mislabeled, lock), /development-only/);
+
+  const falseComponentIdentity = structuredClone(generated);
+  falseComponentIdentity.components[0]!.name = "dev-c";
+  assert.throws(
+    () => runtimeSbom.assertRuntimeSbomParity(falseComponentIdentity, lock),
+    /component runtime-a@1\.0\.0 identity differs/,
+  );
+
+  const falseRootIdentity = structuredClone(generated);
+  falseRootIdentity.metadata.component.version = "9.9.9";
+  assert.throws(
+    () => runtimeSbom.assertRuntimeSbomParity(falseRootIdentity, lock),
+    /root component identity differs/,
   );
 });
 

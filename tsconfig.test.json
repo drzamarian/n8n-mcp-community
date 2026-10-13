@@ -9,5 +9,11 @@
     "declarationMap": false,
     "sourceMap": false
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "scripts/mcpb-format.mjs", "scripts/portable-cli.mjs"]
+  "include": [
+    "src/**/*.ts",
+    "test/**/*.ts",
+    "scripts/generate-runtime-sbom.mjs",
+    "scripts/mcpb-format.mjs",
+    "scripts/portable-cli.mjs"
+  ]
 }

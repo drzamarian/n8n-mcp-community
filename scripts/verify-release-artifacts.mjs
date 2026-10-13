@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { assertRuntimeSbomParity } from "./generate-runtime-sbom.mjs";
 
 const SHA256 = /^[0-9a-f]{64}$/;
 
@@ -72,19 +73,21 @@ async function main() {
   const baseline = JSON.parse(
     await readFile(path.join(root, "release", "artifact-baseline.json"), "utf8"),
   );
-  const [serverJson, sbom, checkoutServerJson] = await Promise.all([
+  const [serverJson, sbom, checkoutServerJson, lock] = await Promise.all([
     readFile(path.join(directory, "server.json")),
     readFile(path.join(directory, "sbom.cdx.json")),
     readFile(path.join(root, "server.json")),
+    readFile(path.join(root, "package-lock.json"), "utf8").then(JSON.parse),
   ]);
   const anchor = verifyReleaseArtifactDigests(baseline, { serverJson, sbom });
+  const runtimeSbom = assertRuntimeSbomParity(JSON.parse(sbom.toString("utf8")), lock);
   // The MCP Registry publishes the checked-out server.json while the GitHub
   // release ships the artifact copy; bind both to the same reviewed digest so
   // the two published copies can never diverge.
   if (sha256Hex(checkoutServerJson) !== anchor.serverJsonSha256) {
     fail("The checked-out server.json diverges from the operator-approved baseline digest.");
   }
-  console.log(JSON.stringify({ ...anchor, status: "pass" }, null, 2));
+  console.log(JSON.stringify({ ...anchor, ...runtimeSbom, status: "pass" }, null, 2));
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
