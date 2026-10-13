@@ -20,6 +20,12 @@ The package declares Node.js `>=22.0.0`. That engine range is an acceptance
 floor, not evidence that every later major has completed the release matrix.
 The supported release lines for v0.3.x are Node.js 22 and 24.
 
+## Upgrading to 0.3.2
+
+Install `n8n-mcp-community@latest` again, then restart the MCP client. This
+maintenance release updates the MCP SDK and its resolved HTTP dependencies; it
+does not change the connection values, modes, or 44/5/4 MCP inventory.
+
 ## Upgrading to 0.3.0
 
 Install `n8n-mcp-community@latest` again, then restart the MCP client. The
@@ -48,7 +54,7 @@ names. MCP clients receive these constraints when they reconnect.
 The connection values are unchanged. Global npm users keep the same client
 entry. Users who followed the 0.1.x npx guide must replace the pinned
 `n8n-mcp-community@0.1.4` argument with `n8n-mcp-community@latest` or
-`n8n-mcp-community@0.3.1`. After updating, restart the MCP client and confirm the
+`n8n-mcp-community@0.3.2`. After updating, restart the MCP client and confirm the
 version and 44/5/4 inventory.
 
 Since 0.2.0, the 14 unsafe tools no longer publish or require a `confirmation` field;

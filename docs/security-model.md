@@ -1,6 +1,6 @@
 # Security model
 
-This document describes the controls and residual risks of the v0.3.1 source
+This document describes the controls and residual risks of the v0.3.2 source
 candidate. It is a threat model, not a claim that the software or the connected
 n8n instance is invulnerable.
 
@@ -157,15 +157,16 @@ native confirmations based on the published MCP annotations.
 
 ### Downstream dependency resolution
 
-MCP SDK 1.30.0 permits the patched `@hono/node-server` 2.x line directly, so
-this project no longer needs a package-root override that downstream consumers
-would not inherit. The verification gate packs the candidate, installs it in a
-disposable consumer without overrides, rejects `@hono/node-server` versions
-below 2.0.5 or outside major version 2, requires a zero-finding production
-audit, and proves the exact MCP inventory still starts. Candidate evidence does
-not establish publication: the released version must pass the same clean
-consumer audit after npm provenance and the other external release readbacks
-agree.
+The pinned MCP SDK 1.32.1 permits the patched `@hono/node-server` 2.x line
+directly, so this project no longer needs a package-root override that
+downstream consumers would not inherit. Its Express range also resolves
+Express 5.3.0 with `proxy-addr` 2.0.8 in this candidate. The verification gate
+packs the candidate, installs it in a disposable consumer without overrides,
+rejects `@hono/node-server` versions below 2.0.5 or outside major version 2,
+requires a zero-finding production audit, and proves the exact MCP inventory
+still starts. Candidate evidence does not establish publication: the released
+version must pass the same clean consumer audit after npm provenance and the
+other external release readbacks agree.
 
 The SDK dependency range also permits the legacy 1.x line. A separate host
 project that co-installs another dependency constraining `@hono/node-server` to
