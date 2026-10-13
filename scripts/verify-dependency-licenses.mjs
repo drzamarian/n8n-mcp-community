@@ -4,9 +4,9 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const EXPECTED_INVENTORY = Object.freeze({
-  packagePaths: 186,
-  uniqueComponents: 185,
-  runtimePackagePaths: 93,
+  packagePaths: 187,
+  uniqueComponents: 186,
+  runtimePackagePaths: 94,
   developmentPackagePaths: 93,
 });
 const ALLOWED_LICENSES = new Set([
